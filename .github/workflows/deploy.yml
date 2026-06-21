@@ -29,6 +29,9 @@ jobs:
 
       - name: Configuration de Pages
         uses: actions/configure-pages@v5
+        with:
+          # Active GitHub Pages automatiquement si ce n'est pas déjà fait
+          enablement: true
 
       - name: Téléversement de l'artefact du site
         uses: actions/upload-pages-artifact@v3
