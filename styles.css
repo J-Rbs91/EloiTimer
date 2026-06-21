@@ -23,6 +23,9 @@ body {
   color: var(--ink);
   background: var(--bg);
   -webkit-text-size-adjust: 100%;
+  /* Respecte les encoches / barres système sur mobile (viewport-fit=cover) */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 /* ---------- Header ---------- */
@@ -226,6 +229,19 @@ tbody tr.weekend td {
 tbody tr:hover td { background: #eef6f1; }
 tbody tr.weekend:hover td { background: #f6ecdc; }
 
+/* Ligne du jour */
+tbody tr.today td {
+  background: #e8f0fe;
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+tbody tr.today:hover td { background: #dbe7fd; }
+
+/* Champ ciblé à l'ouverture */
+.cell-input.focus-today {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .25);
+}
+
 td.num, th.num { text-align: right; }
 td.day { color: var(--muted); text-transform: capitalize; }
 td.amount { font-weight: 600; color: var(--accent-ink); }
@@ -263,8 +279,36 @@ tfoot .amount { color: var(--accent-ink); }
 }
 
 @media (max-width: 640px) {
-  .app-header { padding: 16px; }
-  .tabs { padding: 12px 12px 0; }
-  main { padding: 0 12px 32px; }
-  .totals { gap: 16px; }
+  .app-header { padding: 14px 16px; gap: 12px; }
+  .brand h1 { font-size: 1.3rem; }
+  .controls { width: 100%; gap: 10px; }
+  .control select, .control input { min-width: 0; flex: 1; }
+  .control.actions { width: 100%; }
+  .control.actions button { flex: 1; }
+
+  /* Onglets : défilement horizontal façon application */
+  .tabs {
+    padding: 12px 12px 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { white-space: nowrap; flex: 0 0 auto; }
+
+  main { padding: 0 10px 32px; }
+
+  .summary-bar { padding: 14px 16px; }
+  .summary-bar .title { width: 100%; }
+  .totals { gap: 16px; width: 100%; justify-content: space-between; }
+
+  /* Cibles tactiles plus confortables */
+  thead th, tbody td { padding: 8px; }
+  .cell-input {
+    width: 88px;
+    padding: 9px 8px;
+    font-size: 16px; /* évite le zoom auto iOS sur focus */
+  }
+  td.day { font-size: .85rem; }
 }

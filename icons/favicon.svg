@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Horloge">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="174" fill="#ffffff"/>
+  <!-- 12 repères via tirets sur un cercle -->
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#2563eb" stroke-width="14"
+          stroke-linecap="round" stroke-dasharray="2 76.6"/>
+  <!-- aiguilles pose 10:10 -->
+  <g stroke="#2563eb" stroke-linecap="round" fill="none">
+    <line x1="256" y1="256" x2="180" y2="218" stroke-width="22"/>
+    <line x1="256" y1="256" x2="320" y2="170" stroke-width="18"/>
+  </g>
+  <circle cx="256" cy="256" r="16" fill="#2563eb"/>
+</svg>

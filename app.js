@@ -188,6 +188,7 @@
   function buildMonth(month) {
     const panel = el('section', 'panel');
     const totals = monthTotals(currentYear, month);
+    const now = new Date();
 
     // Bandeau de synthèse
     const bar = el('div', 'summary-bar');
@@ -224,6 +225,13 @@
 
       const tr = document.createElement('tr');
       if (dow === 0 || dow === 6) tr.classList.add('weekend');
+      if (
+        day === now.getDate() &&
+        month === now.getMonth() &&
+        currentYear === now.getFullYear()
+      ) {
+        tr.classList.add('today');
+      }
 
       tr.appendChild(td(`${pad2(day)}/${pad2(month + 1)}/${currentYear}`));
       tr.appendChild(td(WEEKDAYS[dow], 'day'));
@@ -262,6 +270,8 @@
     const input = document.createElement('input');
     input.type = 'time';
     input.className = 'cell-input';
+    input.dataset.day = String(day);
+    input.dataset.field = field;
     input.value = value || '';
     input.addEventListener('change', () => {
       setEntry(currentYear, month, day, field, input.value);
@@ -463,7 +473,40 @@
     });
   }
 
+  /**
+   * À l'ouverture, place le curseur sur le champ à saisir pour AUJOURD'HUI :
+   *  - sur l'heure d'arrivée si elle n'est pas encore renseignée ;
+   *  - sur l'heure de départ si l'arrivée est déjà saisie (et pas le départ).
+   * N'agit que si l'on affiche bien le mois courant de l'année courante.
+   */
+  function focusTodayInput() {
+    const now = new Date();
+    if (currentMonth !== now.getMonth() || currentYear !== now.getFullYear()) return;
+
+    const day = now.getDate();
+    const { arr, dep } = getEntry(currentYear, currentMonth, day);
+
+    // Champ cible : arrivée si absente, sinon départ si l'arrivée est saisie.
+    let field = null;
+    if (!arr) field = 'arr';
+    else if (!dep) field = 'dep';
+    if (!field) return; // journée déjà complète : on ne force rien
+
+    const input = contentEl.querySelector(
+      `.cell-input[data-day="${day}"][data-field="${field}"]`
+    );
+    if (!input) return;
+
+    input.scrollIntoView({ block: 'center', behavior: 'auto' });
+    // léger délai : laisse le rendu/scroll se stabiliser avant le focus
+    setTimeout(() => {
+      input.focus({ preventScroll: true });
+      input.classList.add('focus-today');
+    }, 60);
+  }
+
   initControls();
   renderTabs();
   renderContent();
+  focusTodayInput();
 })();
