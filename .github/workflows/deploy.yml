@@ -1,0 +1,41 @@
+name: Déploiement GitHub Pages
+
+# Publie le site statique (PWA Planning Eloi) sur GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Permissions nécessaires au déploiement Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Un seul déploiement à la fois ; on n'annule pas un déploiement en cours
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupération du dépôt
+        uses: actions/checkout@v4
+
+      - name: Configuration de Pages
+        uses: actions/configure-pages@v5
+
+      - name: Téléversement de l'artefact du site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Racine du dépôt : index.html, styles.css, app.js, sw.js, manifest, icons/
+          path: .
+
+      - name: Déploiement vers GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
