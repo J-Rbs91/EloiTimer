@@ -15,8 +15,25 @@ automatique de la rémunération.
 - **Taux horaire** modifiable (2,66 € par défaut, comme la feuille d'origine).
 - **Année** sélectionnable : les dates et jours de la semaine sont recalculés.
 - **Sauvegarde automatique** dans le navigateur (`localStorage`).
+- **Partage multi-appareils** optionnel via **ta feuille Google** (sans backend
+  ni VPS) : la feuille sert de base partagée, « comme un Excel partagé ».
+  Voir [`apps-script/README.md`](apps-script/README.md).
 - **Export CSV** du mois affiché ou du récapitulatif (séparateur `;`, format FR).
 - Surlignage des week-ends, mise en page proche de la feuille de calcul.
+
+## Partage multi-appareils (optionnel)
+
+Par défaut, les données restent **locales** à l'appareil. Pour les partager
+entre plusieurs téléphones/ordinateurs sans serveur :
+
+1. Déploie le script `apps-script/Code.gs` dans **ta feuille Google**
+   (notice détaillée : [`apps-script/README.md`](apps-script/README.md)).
+2. Dans l'app, bouton **☁ Partage** → colle l'URL `/exec` + l'année de la feuille.
+
+La feuille devient la source partagée : chaque saisie y est écrite et l'app se
+resynchronise à l'ouverture et toutes les 45 s. L'URL `/exec` est un **lien
+secret** (quiconque la possède peut lire/écrire) ; ne la partage qu'aux
+personnes concernées.
 
 ## Utilisation
 

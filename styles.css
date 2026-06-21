@@ -115,6 +115,77 @@ button.danger {
   border-color: #f0c2c2;
 }
 
+/* ---------- Indicateur de synchronisation ---------- */
+.hidden { display: none !important; }
+
+.sync-status {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.sync-status::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+.sync-status.ok { color: var(--accent); }
+.sync-status.sync { color: #b7791f; }
+.sync-status.off { color: var(--danger); }
+
+/* ---------- Fenêtre modale ---------- */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, .55);
+}
+.modal-card {
+  background: var(--panel);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  width: 100%;
+  max-width: 480px;
+  padding: 22px 22px 18px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-card h2 { margin: 0 0 8px; font-size: 1.2rem; }
+.modal-intro { margin: 0 0 16px; color: var(--muted); font-size: .9rem; line-height: 1.45; }
+.modal-intro code { background: #eef1f4; padding: 1px 5px; border-radius: 4px; }
+
+.modal-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; font-size: .82rem; font-weight: 600; color: var(--muted); }
+.modal-field input,
+.modal-field select {
+  font: inherit;
+  font-weight: 400;
+  color: var(--ink);
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.modal-field input:focus, .modal-field select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.modal-feedback { min-height: 1.2em; margin: 0 0 12px; font-size: .85rem; font-weight: 600; }
+.modal-feedback.ok { color: var(--accent); }
+.modal-feedback.err { color: var(--danger); }
+.modal-feedback.info { color: #b7791f; }
+
+.modal-actions { display: flex; align-items: center; gap: 8px; }
+.modal-actions .spacer { flex: 1; }
+button.ghost { background: #fff; color: var(--ink); border-color: var(--line); }
+button.ghost:hover { background: #f1f4f7; }
+
 /* ---------- Tabs ---------- */
 .tabs {
   display: flex;

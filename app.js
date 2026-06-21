@@ -9,7 +9,9 @@
  *   - TOTAL des heures et des montants par mois, et récapitulatif annuel
  *
  * Aucune dépendance : HTML/CSS/JS pur. Les saisies sont conservées dans
- * le localStorage du navigateur (clé "eloitimer.v1").
+ * le localStorage du navigateur (clé "eloitimer.v1"), et peuvent en option
+ * être synchronisées avec une feuille Google partagée via Apps Script
+ * (voir apps-script/ et le module « Synchronisation » plus bas).
  * ===================================================================== */
 
 (() => {
@@ -66,6 +68,190 @@
     }
   }
 
+  // =======================================================================
+  //  Synchronisation avec la feuille Google (optionnelle, via Apps Script)
+  //  Transport : JSONP (balise <script>) pour contourner le CORS.
+  //  La feuille fait office de base partagée : « comme un Excel partagé ».
+  // =======================================================================
+  const SYNC_KEY = 'eloitimer.sync';
+  const PENDING_KEY = 'eloitimer.pending';
+  const POLL_MS = 45000; // rafraîchissement périodique depuis la feuille
+
+  let sync = loadSync();                 // { url, year }
+  const pending = new Map();             // clés de jours à (re)pousser
+  let jsonpSeq = 0;
+  let flushTimer = null;
+  let pollTimer = null;
+
+  function loadSync() {
+    try {
+      const p = JSON.parse(localStorage.getItem(SYNC_KEY) || '{}');
+      return { url: typeof p.url === 'string' ? p.url : '', year: p.year || null };
+    } catch (e) {
+      return { url: '', year: null };
+    }
+  }
+  function saveSync() {
+    try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); } catch (e) { /* quota */ }
+  }
+  const syncEnabled = () => !!sync.url;
+  const syncedYear = () => sync.year || currentYear;
+
+  function loadPending() {
+    try {
+      JSON.parse(localStorage.getItem(PENDING_KEY) || '[]').forEach((k) => pending.set(k, true));
+    } catch (e) { /* ignore */ }
+  }
+  function savePending() {
+    try { localStorage.setItem(PENDING_KEY, JSON.stringify([...pending.keys()])); } catch (e) { /* quota */ }
+  }
+
+  /** Appel JSONP à l'application Web Apps Script. */
+  function jsonp(params, timeoutMs = 15000) {
+    return new Promise((resolve, reject) => {
+      if (!sync.url) return reject(new Error('URL non configurée'));
+      const cb = '__eloi_cb_' + (++jsonpSeq);
+      const qs = Object.keys(params)
+        .map((k) => encodeURIComponent(k) + '=' + encodeURIComponent(params[k]))
+        .join('&');
+      const sep = sync.url.indexOf('?') === -1 ? '?' : '&';
+      const script = document.createElement('script');
+      const timer = setTimeout(() => { cleanup(); reject(new Error('délai dépassé')); }, timeoutMs);
+      function cleanup() {
+        clearTimeout(timer);
+        delete window[cb];
+        if (script.parentNode) script.parentNode.removeChild(script);
+      }
+      window[cb] = (data) => { cleanup(); resolve(data); };
+      script.onerror = () => { cleanup(); reject(new Error('échec réseau')); };
+      script.src = sync.url + sep + qs + '&callback=' + cb;
+      document.head.appendChild(script);
+    });
+  }
+
+  /** Marque un jour comme à pousser puis planifie un envoi groupé. */
+  function queueCloudDay(year, key) {
+    if (!syncEnabled() || year !== syncedYear()) return;
+    pending.set(key, true);
+    savePending();
+    scheduleFlush();
+  }
+
+  function scheduleFlush() {
+    if (!syncEnabled()) return;
+    setSyncStatus('sync', 'Enregistrement…');
+    clearTimeout(flushTimer);
+    flushTimer = setTimeout(async () => {
+      await flushPending();
+      setSyncStatus(pending.size ? 'off' : 'ok', pending.size ? 'En attente de réseau…' : 'Synchronisé');
+    }, 800);
+  }
+
+  /** Pousse tous les jours en attente (s'arrête au premier échec réseau). */
+  async function flushPending() {
+    if (!syncEnabled()) return;
+    for (const key of [...pending.keys()]) {
+      const ok = await pushDay(key);
+      if (ok) { pending.delete(key); savePending(); }
+      else break;
+    }
+  }
+
+  /** Écrit un jour (arrivée/départ/heures/montant/taux) dans la feuille. */
+  async function pushDay(key) {
+    const [y, mm, dd] = key.split('-').map(Number);
+    const month = mm - 1;
+    const entry = state.entries[key] || {};
+    const hours = computeHours(entry.arr, entry.dep);
+    const dow = new Date(y, month, dd).getDay();
+    try {
+      const data = await jsonp({
+        action: 'write', year: y, month: mm, day: dd,
+        arr: entry.arr || '', dep: entry.dep || '',
+        hours: hours ? hours.toFixed(2) : '',
+        amount: hours ? (hours * state.rate).toFixed(2) : '',
+        jour: WEEKDAYS[dow], rate: state.rate,
+      });
+      return !!(data && data.ok);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /** Récupère les données de la feuille et les applique à l'année synchronisée. */
+  async function cloudPull() {
+    if (!syncEnabled()) return;
+    await flushPending(); // n'écrase pas des saisies locales non encore envoyées
+    setSyncStatus('sync', 'Synchronisation…');
+    try {
+      const data = await jsonp({ action: 'read' });
+      if (!data || !data.ok) throw new Error((data && data.error) || 'réponse invalide');
+      applyCloudData(data);
+      setSyncStatus(pending.size ? 'off' : 'ok', pending.size ? 'En attente de réseau…' : 'Synchronisé');
+    } catch (e) {
+      setSyncStatus('off', 'Hors-ligne (cache local)');
+    }
+  }
+
+  function applyCloudData(data) {
+    const year = syncedYear();
+    if (typeof data.rate === 'number' && data.rate > 0) {
+      state.rate = data.rate;
+      const ri = document.getElementById('rate-input');
+      if (ri) ri.value = state.rate;
+    }
+    // Remplace les entrées de l'année synchronisée par celles de la feuille
+    const prefix = `${year}-`;
+    Object.keys(state.entries).forEach((k) => { if (k.startsWith(prefix)) delete state.entries[k]; });
+    const months = data.months || {};
+    Object.keys(months).forEach((mStr) => {
+      const month = parseInt(mStr, 10) - 1;
+      const days = months[mStr] || {};
+      Object.keys(days).forEach((dStr) => {
+        const day = parseInt(dStr, 10);
+        const { arr, dep } = days[dStr] || {};
+        const entry = {};
+        if (arr) entry.arr = arr;
+        if (dep) entry.dep = dep;
+        if (entry.arr || entry.dep) state.entries[dayKey(year, month, day)] = entry;
+      });
+    });
+    save();
+    renderContent();
+  }
+
+  /** Propage un changement de taux (B1 de tous les onglets + recalcul des montants). */
+  function pushRate() {
+    if (!syncEnabled()) return;
+    jsonp({ action: 'setrate', rate: state.rate }).catch(() => {});
+    // Recalcule les montants déjà écrits pour l'année synchronisée
+    const prefix = `${syncedYear()}-`;
+    Object.keys(state.entries).forEach((k) => { if (k.startsWith(prefix)) pending.set(k, true); });
+    savePending();
+    scheduleFlush();
+  }
+
+  function setSyncStatus(kind, text) {
+    const elStatus = document.getElementById('sync-status');
+    if (!elStatus) return;
+    if (!syncEnabled()) { elStatus.classList.add('hidden'); return; }
+    elStatus.classList.remove('hidden');
+    elStatus.className = 'sync-status ' + kind;
+    elStatus.textContent = text;
+  }
+
+  function startPolling() {
+    clearInterval(pollTimer);
+    if (!syncEnabled()) return;
+    pollTimer = setInterval(() => {
+      // Ne pas rafraîchir l'affichage pendant une saisie en cours
+      const active = document.activeElement;
+      if (active && active.classList && active.classList.contains('cell-input')) return;
+      if (pending.size) flushPending();
+      else cloudPull();
+    }, POLL_MS);
+  }
+
   // ---- Clés & calculs ----------------------------------------------------
   const dayKey = (year, month, day) => `${year}-${pad2(month + 1)}-${pad2(day)}`;
 
@@ -81,6 +267,7 @@
     if (entry.arr || entry.dep) state.entries[key] = entry;
     else delete state.entries[key];
     save();
+    queueCloudDay(year, key); // pousse vers la feuille Google si la synchro est active
   }
 
   /** Convertit "HH:MM" en heures décimales, ou null si invalide. */
@@ -453,13 +640,17 @@
 
     const rateInput = document.getElementById('rate-input');
     rateInput.value = state.rate;
+    let rateTimer = null;
     rateInput.addEventListener('input', () => {
       const v = parseFloat(rateInput.value);
       state.rate = Number.isFinite(v) && v >= 0 ? v : 0;
       save();
       renderContent();
+      clearTimeout(rateTimer);
+      rateTimer = setTimeout(pushRate, 700); // propage le taux à la feuille
     });
 
+    document.getElementById('share-btn').addEventListener('click', openShareModal);
     document.getElementById('export-btn').addEventListener('click', exportCsv);
 
     document.getElementById('reset-btn').addEventListener('click', () => {
@@ -470,6 +661,89 @@
       });
       save();
       renderContent();
+    });
+  }
+
+  // ---- Fenêtre de partage (configuration de la synchro) -----------------
+  function openShareModal() {
+    const modal = document.getElementById('share-modal');
+    const urlInput = document.getElementById('share-url');
+    const yearSel = document.getElementById('share-year');
+    const feedback = document.getElementById('share-feedback');
+
+    // Liste d'années autour de l'année courante
+    yearSel.innerHTML = '';
+    const thisYear = new Date().getFullYear();
+    for (let y = thisYear - 3; y <= thisYear + 3; y++) {
+      const opt = document.createElement('option');
+      opt.value = String(y);
+      opt.textContent = String(y);
+      yearSel.appendChild(opt);
+    }
+    urlInput.value = sync.url || '';
+    yearSel.value = String(sync.year || currentYear);
+    feedback.textContent = '';
+    feedback.className = 'modal-feedback';
+    document.getElementById('share-disable').classList.toggle('hidden', !syncEnabled());
+
+    modal.classList.remove('hidden');
+    urlInput.focus();
+  }
+
+  function closeShareModal() {
+    document.getElementById('share-modal').classList.add('hidden');
+  }
+
+  function setupShareModal() {
+    const modal = document.getElementById('share-modal');
+    const urlInput = document.getElementById('share-url');
+    const yearSel = document.getElementById('share-year');
+    const feedback = document.getElementById('share-feedback');
+
+    document.getElementById('share-cancel').addEventListener('click', closeShareModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeShareModal(); });
+
+    document.getElementById('share-disable').addEventListener('click', () => {
+      sync = { url: '', year: null };
+      saveSync();
+      clearInterval(pollTimer);
+      setSyncStatus('off', '');
+      document.getElementById('sync-status').classList.add('hidden');
+      closeShareModal();
+    });
+
+    document.getElementById('share-save').addEventListener('click', async () => {
+      const url = urlInput.value.trim();
+      const year = Number(yearSel.value);
+      if (!/^https:\/\/script\.google\.com\/.*\/exec$/.test(url)) {
+        feedback.className = 'modal-feedback err';
+        feedback.textContent = "L'URL doit ressembler à https://script.google.com/macros/s/…/exec";
+        return;
+      }
+      feedback.className = 'modal-feedback info';
+      feedback.textContent = 'Test de la connexion…';
+      // Applique temporairement pour tester
+      const previous = sync;
+      sync = { url, year };
+      try {
+        const res = await jsonp({ action: 'ping' }, 15000);
+        if (!res || !res.ok) throw new Error('réponse inattendue');
+      } catch (e) {
+        sync = previous;
+        feedback.className = 'modal-feedback err';
+        feedback.textContent = 'Connexion impossible. Vérifie l\'URL et le déploiement (accès « Tout le monde »).';
+        return;
+      }
+      saveSync();
+      currentYear = year;
+      const yearSelMain = document.getElementById('year-select');
+      if (yearSelMain) yearSelMain.value = String(year);
+      feedback.className = 'modal-feedback ok';
+      feedback.textContent = 'Connecté ! Synchronisation en cours…';
+      setSyncStatus('sync', 'Synchronisation…');
+      await cloudPull();
+      startPolling();
+      setTimeout(closeShareModal, 600);
     });
   }
 
@@ -505,8 +779,18 @@
     }, 60);
   }
 
+  // ---- Démarrage ---------------------------------------------------------
+  loadPending();
+  if (syncEnabled() && sync.year) currentYear = sync.year;
+
   initControls();
+  setupShareModal();
   renderTabs();
   renderContent();
   focusTodayInput();
+
+  if (syncEnabled()) {
+    setSyncStatus('sync', 'Synchronisation…');
+    cloudPull().then(() => { focusTodayInput(); startPolling(); });
+  }
 })();

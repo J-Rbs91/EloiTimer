@@ -38,11 +38,45 @@
       </label>
 
       <div class="control actions">
+        <button id="share-btn" type="button" title="Partager les données via une feuille Google">☁ Partage</button>
         <button id="export-btn" type="button" title="Exporter le mois affiché en CSV">Exporter CSV</button>
         <button id="reset-btn" type="button" class="danger" title="Effacer les saisies de l'année affichée">Réinitialiser l'année</button>
       </div>
     </div>
+
+    <div id="sync-status" class="sync-status hidden" aria-live="polite"></div>
   </header>
+
+  <!-- Fenêtre de configuration du partage (cachée par défaut) -->
+  <div id="share-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="share-title">
+    <div class="modal-card">
+      <h2 id="share-title">Partage multi-appareils</h2>
+      <p class="modal-intro">
+        Connecte la PWA à <strong>ta feuille Google</strong> pour partager les données
+        entre appareils, sans serveur. Suis la notice
+        <code>apps-script/README.md</code> pour obtenir l'URL <code>/exec</code>.
+      </p>
+
+      <label class="modal-field">
+        <span>URL de l'application Web (lien secret)</span>
+        <input id="share-url" type="url" placeholder="https://script.google.com/macros/s/…/exec" />
+      </label>
+
+      <label class="modal-field">
+        <span>Année représentée par la feuille</span>
+        <select id="share-year"></select>
+      </label>
+
+      <p id="share-feedback" class="modal-feedback"></p>
+
+      <div class="modal-actions">
+        <button id="share-disable" type="button" class="ghost">Désactiver</button>
+        <span class="spacer"></span>
+        <button id="share-cancel" type="button" class="ghost">Annuler</button>
+        <button id="share-save" type="button">Tester &amp; enregistrer</button>
+      </div>
+    </div>
+  </div>
 
   <nav class="tabs" id="tabs" aria-label="Onglets des mois"></nav>
 
