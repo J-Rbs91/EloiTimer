@@ -94,14 +94,43 @@
     return h + min / 60;
   }
 
-  /** Heures travaillées entre arrivée et départ (gère le passage de minuit). */
-  function computeHours(arr, dep) {
+  /**
+   * Arrondi à la demi-heure, en faveur d'Eloi :
+   *  - arrivée arrondie au PLANCHER  (9h01 / 9h29  -> 9h00)
+   *  - départ  arrondi  au PLAFOND   (18h01 / 18h29 -> 18h30)
+   * Renvoie les heures décimales arrondies, ou null si saisie incomplète.
+   */
+  function roundedTimes(arr, dep) {
     const a = timeToHours(arr);
     const d = timeToHours(dep);
-    if (a === null || d === null) return 0;
-    let diff = d - a;
+    if (a === null || d === null) return null;
+    return {
+      arr: Math.floor(a * 2) / 2, // plancher à la demi-heure
+      dep: Math.ceil(d * 2) / 2,  // plafond à la demi-heure
+    };
+  }
+
+  /** Heures travaillées (après arrondi), gère le passage de minuit. */
+  function computeHours(arr, dep) {
+    const r = roundedTimes(arr, dep);
+    if (!r) return 0;
+    let diff = r.dep - r.arr;
     if (diff < 0) diff += 24; // service de nuit
     return diff;
+  }
+
+  /** Convertit des heures décimales en "HH:MM" (pour l'info-bulle). */
+  function hoursToTime(h) {
+    const hh = Math.floor(h) % 24;
+    const mm = Math.round((h - Math.floor(h)) * 60);
+    return `${pad2(hh)}:${pad2(mm)}`;
+  }
+
+  /** Texte d'info-bulle expliquant l'arrondi appliqué à une ligne. */
+  function roundInfo(arr, dep) {
+    const r = roundedTimes(arr, dep);
+    if (!r) return '';
+    return `Arrivée comptée ${hoursToTime(r.arr)} · Départ compté ${hoursToTime(r.dep)}`;
   }
 
   function daysInMonth(year, month) {
@@ -203,6 +232,7 @@
       tr.appendChild(timeCell(month, day, 'dep', entry.dep));
 
       const hoursCell = td(hours ? fmtHours(hours) : '0,00', 'num');
+      hoursCell.title = roundInfo(entry.arr, entry.dep);
       tr.appendChild(hoursCell);
 
       const amountCell = td(fmtEuro(hours * state.rate), 'num amount');
@@ -248,6 +278,7 @@
     const hours = computeHours(entry.arr, entry.dep);
     const cells = tr.querySelectorAll('td');
     cells[4].textContent = hours ? fmtHours(hours) : '0,00';
+    cells[4].title = roundInfo(entry.arr, entry.dep);
     cells[5].textContent = fmtEuro(hours * state.rate);
 
     const totals = monthTotals(currentYear, month);
