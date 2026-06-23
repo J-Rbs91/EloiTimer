@@ -1,82 +1,60 @@
 /* =========================================================================
- * Planning Eloi — interface épurée, sobre, inspirée des apps Apple.
- * Palette neutre + un seul accent bleu. Mode clair/sombre automatique.
- * Aucune classe/id n'est renommée : le HTML et le JS restent inchangés.
+ * Planning Eloi — thème « cartes claires sur fond marine ».
+ * Palette fixe imposée :
+ *   fond                       #00172C
+ *   cartes/champs primaire     #EFF6E0
+ *   cartes/champs secondaire   #AEC3B0
+ *   hover & accentuation       #026464
+ *   erreurs & warnings         #C23012
+ *   bordures & police          #04111E   (bordures fines, radius doux)
+ * Police : Manrope. Aucune classe/id générée par app.js n'est renommée.
  * ===================================================================== */
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
-  /* Surfaces & encre */
-  --bg: #f5f5f7;
-  --panel: #ffffff;
-  --panel-2: #fbfbfd;
-  --elevated: #ffffff;
-  --ink: #1d1d1f;
-  --muted: #6e6e73;
-  --faint: #8e8e93;
-  --line: #e6e6eb;
-  --line-strong: #d6d6db;
+  /* Surfaces */
+  --bg: #00172C;
+  --panel: #EFF6E0;          /* cartes & champs — primaire */
+  --panel-2: #AEC3B0;        /* cartes & champs — secondaire */
+  --elevated: #EFF6E0;       /* modale */
 
-  /* Accent unique (bleu Apple) */
+  /* Encre / texte / bordures */
+  --ink: #04111E;
+  --muted: rgba(4, 17, 30, .64);
+  --faint: rgba(4, 17, 30, .5);
+  --line: #04111E;
+  --on-accent: #EFF6E0;      /* texte posé sur l'accent ou le fond marine */
+  --on-bg: rgba(239, 246, 224, .72);
+
+  /* Accent unique (hover + accentuation) */
   --accent: #026464;
   --accent-ink: #026464;
-  --accent-soft: rgba(2, 100, 100, .08);
-  --accent-ring: rgba(2, 100, 100, .32);
-
-  /* Montants (€) — vert sobre, désaturé */
-  --money: #1d7a4d;
+  --accent-soft: rgba(2, 100, 100, .12);
+  --accent-ring: rgba(2, 100, 100, .38);
+  --money: #026464;
 
   /* Repères discrets */
-  --weekend: #fafafc;
-  --today: rgba(0, 113, 227, .07);
-  --danger: #d70015;
-  --danger-soft: rgba(215, 0, 21, .08);
+  --weekend: rgba(174, 195, 176, .35);
+  --today: rgba(2, 100, 100, .13);
 
-  /* Verre dépoli & ombres */
-  --glass: rgba(255, 255, 255, .72);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .04);
-  --shadow: 0 1px 1px rgba(0, 0, 0, .03), 0 8px 24px rgba(0, 0, 0, .06);
-  --shadow-pop: 0 12px 40px rgba(0, 0, 0, .12);
+  /* Erreurs / warnings */
+  --danger: #C23012;
+  --danger-soft: rgba(194, 48, 18, .12);
 
-  --radius: 18px;
+  /* Ombres douces */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .14);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .12), 0 10px 28px rgba(0, 0, 0, .22);
+  --shadow-pop: 0 18px 50px rgba(0, 0, 0, .45);
+
+  /* Radius doux */
+  --radius: 16px;
   --radius-sm: 12px;
-  --radius-xs: 9px;
+  --radius-xs: 10px;
 
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #000000;
-    --panel: #1c1c1e;
-    --panel-2: #242426;
-    --elevated: #2c2c2e;
-    --ink: #f5f5f7;
-    --muted: #98989d;
-    --faint: #8e8e93;
-    --line: rgba(255, 255, 255, .11);
-    --line-strong: rgba(255, 255, 255, .18);
-
-    --accent: #0a9d9d;
-    --accent-ink: #3dc9c9;
-    --accent-soft: rgba(10, 157, 157, .16);
-    --accent-ring: rgba(10, 157, 157, .5);
-
-    --money: #34c759;
-
-    --weekend: rgba(255, 255, 255, .025);
-    --today: rgba(10, 132, 255, .16);
-    --danger: #ff453a;
-    --danger-soft: rgba(255, 69, 58, .16);
-
-    --glass: rgba(28, 28, 30, .72);
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
-    --shadow: 0 1px 1px rgba(0, 0, 0, .3), 0 10px 30px rgba(0, 0, 0, .5);
-    --shadow-pop: 0 16px 50px rgba(0, 0, 0, .6);
-  }
 }
 
 * { box-sizing: border-box; }
@@ -85,8 +63,8 @@ html { scroll-behavior: smooth; }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro",
-    "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
+  font-family: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    system-ui, Roboto, Helvetica, Arial, sans-serif;
   color: var(--ink);
   background: var(--bg);
   line-height: 1.45;
@@ -106,24 +84,23 @@ body {
   align-items: flex-end;
   justify-content: space-between;
   padding: 18px clamp(16px, 4vw, 36px);
-  background: var(--glass);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-  backdrop-filter: saturate(180%) blur(20px);
+  background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
 
 .brand h1 {
   margin: 0;
   font-size: clamp(1.3rem, 3.5vw, 1.6rem);
-  font-weight: 700;
-  letter-spacing: -.022em;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  color: var(--ink);
 }
 
 .subtitle {
   margin: 3px 0 0;
   color: var(--muted);
   font-size: .88rem;
-  letter-spacing: -.01em;
+  font-weight: 500;
 }
 
 .controls {
@@ -138,9 +115,9 @@ body {
   flex-direction: column;
   gap: 6px;
   font-size: .72rem;
-  color: var(--faint);
-  font-weight: 600;
-  letter-spacing: .02em;
+  color: var(--muted);
+  font-weight: 700;
+  letter-spacing: .01em;
 }
 
 .control select,
@@ -150,7 +127,7 @@ body {
   letter-spacing: normal;
   color: var(--ink);
   padding: 9px 12px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: var(--radius-xs);
   background: var(--panel);
   min-width: 116px;
@@ -161,8 +138,8 @@ body {
 
 .control select {
   background-image:
-    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
-    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    linear-gradient(45deg, transparent 50%, var(--ink) 50%),
+    linear-gradient(135deg, var(--ink) 50%, transparent 50%);
   background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%;
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
@@ -187,36 +164,36 @@ body {
 /* ============================ Boutons ============================ */
 button {
   font: inherit;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: -.01em;
   cursor: pointer;
   padding: 9px 16px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: var(--radius-xs);
-  background: var(--panel);
+  background: var(--panel-2);
   color: var(--ink);
-  transition: background .15s ease, border-color .15s ease,
+  transition: background .15s ease, color .15s ease, border-color .15s ease,
     transform .08s ease, box-shadow .15s ease;
 }
 
-button:hover { background: var(--panel-2); border-color: var(--muted); }
+button:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 button:active { transform: scale(.97); }
 button:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--accent-ring); }
 
 button.danger {
   background: transparent;
   color: var(--danger);
-  border-color: transparent;
+  border-color: var(--danger);
 }
-button.danger:hover { background: var(--danger-soft); border-color: transparent; }
+button.danger:hover { background: var(--danger); color: var(--on-accent); border-color: var(--danger); }
 
 /* CTA principal (bouton « Tester & enregistrer » de la modale) */
 .modal-actions button:last-child {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
-.modal-actions button:last-child:hover { filter: brightness(1.06); background: var(--accent); }
+.modal-actions button:last-child:hover { filter: brightness(1.08); background: var(--accent); color: var(--on-accent); }
 
 /* ================= Indicateur de synchronisation ================ */
 .hidden { display: none !important; }
@@ -227,7 +204,7 @@ button.danger:hover { background: var(--danger-soft); border-color: transparent;
   align-items: center;
   gap: 8px;
   font-size: .8rem;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--muted);
 }
 .sync-status::before {
@@ -239,8 +216,8 @@ button.danger:hover { background: var(--danger-soft); border-color: transparent;
   flex: 0 0 auto;
   box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 18%, transparent);
 }
-.sync-status.ok { color: var(--money); }
-.sync-status.sync { color: #b7791f; }
+.sync-status.ok { color: var(--accent); }
+.sync-status.sync { color: var(--muted); }
 .sync-status.off { color: var(--danger); }
 
 /* ============================ Modale ============================ */
@@ -252,7 +229,7 @@ button.danger:hover { background: var(--danger-soft); border-color: transparent;
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(0, 0, 0, .4);
+  background: rgba(0, 6, 14, .55);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
   animation: fade .2s ease;
@@ -269,7 +246,7 @@ button.danger:hover { background: var(--danger-soft); border-color: transparent;
   overflow-y: auto;
   animation: pop .22s cubic-bezier(.2, .8, .2, 1);
 }
-.modal-card h2 { margin: 0 0 10px; font-size: 1.3rem; font-weight: 700; letter-spacing: -.02em; }
+.modal-card h2 { margin: 0 0 10px; font-size: 1.3rem; font-weight: 800; letter-spacing: -.02em; }
 .modal-intro { margin: 0 0 18px; color: var(--muted); font-size: .9rem; line-height: 1.5; }
 .modal-intro code {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
@@ -280,60 +257,62 @@ button.danger:hover { background: var(--danger-soft); border-color: transparent;
   border-radius: 6px;
 }
 
-.modal-field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px; font-size: .78rem; font-weight: 600; color: var(--faint); }
+.modal-field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px; font-size: .78rem; font-weight: 700; color: var(--muted); }
 .modal-field input,
 .modal-field select {
   font: inherit;
   font-weight: 500;
   color: var(--ink);
   padding: 11px 13px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: var(--radius-xs);
   background: var(--panel);
   transition: border-color .15s ease, box-shadow .15s ease;
 }
 
-.modal-feedback { min-height: 1.2em; margin: 4px 0 14px; font-size: .85rem; font-weight: 500; }
-.modal-feedback.ok { color: var(--money); }
+.modal-feedback { min-height: 1.2em; margin: 4px 0 14px; font-size: .85rem; font-weight: 600; }
+.modal-feedback.ok { color: var(--accent); }
 .modal-feedback.err { color: var(--danger); }
-.modal-feedback.info { color: #b7791f; }
+.modal-feedback.info { color: var(--muted); }
 
 .modal-actions { display: flex; align-items: center; gap: 10px; }
 .modal-actions .spacer { flex: 1; }
-button.ghost { background: transparent; color: var(--ink); border-color: var(--line-strong); }
-button.ghost:hover { background: var(--panel-2); }
+button.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+button.ghost:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 
 /* ============================ Onglets =========================== */
+/* Les onglets reposent sur le fond marine : texte clair, pastille active accent. */
 .tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 18px clamp(16px, 4vw, 36px) 4px;
+  padding: 16px clamp(16px, 4vw, 36px) 4px;
 }
 
 .tab {
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
-  color: var(--muted);
+  color: var(--on-bg);
   padding: 8px 15px;
   border-radius: 980px;
-  font-weight: 500;
+  font-weight: 600;
   font-size: .9rem;
   letter-spacing: -.01em;
-  transition: background .15s ease, color .15s ease;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
 }
 
-.tab:hover { background: var(--accent-soft); color: var(--ink); }
+.tab:hover { background: rgba(2, 100, 100, .35); color: var(--on-accent); }
 
 .tab.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
+  border-color: var(--accent);
   box-shadow: var(--shadow-sm);
 }
-.tab.active:hover { background: var(--accent); color: #fff; }
+.tab.active:hover { background: var(--accent); color: var(--on-accent); }
 
-.tab.recap { font-weight: 600; }
-.tab.recap.active { background: var(--ink); color: var(--bg); }
+.tab.recap { font-weight: 700; }
+.tab.recap.active { background: var(--panel-2); color: var(--ink); border-color: var(--panel-2); }
 
 /* ============================ Contenu =========================== */
 main {
@@ -361,7 +340,7 @@ main {
 
 .summary-bar .title {
   font-size: 1.2rem;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: -.02em;
   color: var(--ink);
 }
@@ -379,14 +358,14 @@ main {
 .total-box .label {
   display: block;
   font-size: .68rem;
-  letter-spacing: .03em;
-  color: var(--faint);
-  font-weight: 600;
+  letter-spacing: .02em;
+  color: var(--muted);
+  font-weight: 700;
   margin-bottom: 2px;
 }
 .total-box .value {
   font-size: 1.32rem;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: -.02em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
@@ -406,20 +385,20 @@ thead th {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--panel);
-  color: var(--faint);
+  background: var(--panel-2);
+  color: var(--ink);
   font-size: .72rem;
-  letter-spacing: .03em;
-  font-weight: 600;
+  letter-spacing: .02em;
+  font-weight: 700;
   padding: 13px 14px;
   text-align: left;
   white-space: nowrap;
-  border-bottom: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line);
 }
 
 tbody td {
   padding: 7px 14px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid rgba(4, 17, 30, .12);
   white-space: nowrap;
   font-size: .92rem;
 }
@@ -445,26 +424,26 @@ tbody tr.today:hover td { background: var(--today); }
 
 td.num, th.num { text-align: right; }
 td.day { color: var(--muted); text-transform: capitalize; }
-td.amount { font-weight: 600; color: var(--money); }
+td.amount { font-weight: 700; color: var(--money); }
 
 .cell-input {
   font: inherit;
   width: 104px;
   padding: 6px 9px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: var(--radius-xs);
   background: var(--panel);
   color: var(--ink);
   transition: border-color .15s ease, box-shadow .15s ease;
 }
-.cell-input::-webkit-calendar-picker-indicator { opacity: .45; }
-.cell-input:hover { border-color: var(--muted); }
+.cell-input::-webkit-calendar-picker-indicator { opacity: .55; }
+.cell-input:hover { border-color: var(--accent); }
 
 tfoot td {
   padding: 15px 14px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: -.01em;
-  border-top: 1px solid var(--line-strong);
+  border-top: 1px solid var(--line);
   background: var(--panel-2);
 }
 tfoot .num { text-align: right; font-size: 1.05rem; }
@@ -472,14 +451,15 @@ tfoot .amount { color: var(--money); }
 
 /* ============================ Récap ============================ */
 .recap-row { cursor: pointer; transition: background .12s ease; }
-.recap-row td.month { font-weight: 600; text-transform: capitalize; }
+.recap-row td.month { font-weight: 700; text-transform: capitalize; }
 .recap-row:hover td { background: var(--accent-soft); }
 
 /* ============================ Pied ============================= */
 .app-footer {
   padding: 18px 24px 32px;
-  color: var(--faint);
+  color: var(--on-bg);
   font-size: .8rem;
+  font-weight: 500;
   text-align: center;
 }
 

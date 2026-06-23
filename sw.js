@@ -2,7 +2,7 @@
  * Met en cache la coquille de l'application pour un fonctionnement hors-ligne.
  * Stratégie : "stale-while-revalidate" pour les ressources locales.
  */
-const CACHE = 'eloitimer-v5';
+const CACHE = 'eloitimer-v6';
 const ASSETS = [
   './',
   './index.html',
