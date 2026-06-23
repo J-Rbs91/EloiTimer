@@ -1,8 +1,9 @@
 /* Service worker — Planning Eloi
- * Met en cache la coquille de l'application pour un fonctionnement hors-ligne.
- * Stratégie : "stale-while-revalidate" pour les ressources locales.
+ * Stratégie : "réseau d'abord" (network-first) pour les ressources locales.
+ * En ligne -> toujours la dernière version ; hors-ligne -> repli sur le cache.
+ * Évite les versions figées en cache après un déploiement.
  */
-const CACHE = 'eloitimer-v6';
+const CACHE = 'eloitimer-v7';
 const ASSETS = [
   './',
   './index.html',
@@ -35,18 +36,17 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
 
+  // Réseau d'abord : on tente le réseau, on met à jour le cache, et on ne
+  // retombe sur le cache qu'en cas d'échec (hors-ligne).
   event.respondWith(
-    caches.match(request).then((cached) => {
-      const network = fetch(request)
-        .then((resp) => {
-          if (resp && resp.status === 200) {
-            const copy = resp.clone();
-            caches.open(CACHE).then((c) => c.put(request, copy));
-          }
-          return resp;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
+    fetch(request)
+      .then((resp) => {
+        if (resp && resp.status === 200) {
+          const copy = resp.clone();
+          caches.open(CACHE).then((c) => c.put(request, copy));
+        }
+        return resp;
+      })
+      .catch(() => caches.match(request))
   );
 });
