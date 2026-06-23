@@ -36,7 +36,7 @@
 
   /* Repères discrets */
   --row-alt: #8FA6A1;        /* zébrage : une ligne sur deux */
-  --weekend: #728581;        /* week-ends : 20% plus foncés que le zébrage */
+  --weekend: #5B6A67;        /* week-ends : encore 20% plus foncés */
   --today: rgba(2, 100, 100, .13);
 
   /* Erreurs / warnings */
