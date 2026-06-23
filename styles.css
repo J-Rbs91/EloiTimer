@@ -507,18 +507,24 @@ tfoot .amount { color: var(--money); }
   .tabs::-webkit-scrollbar { display: none; }
   .tab { white-space: nowrap; flex: 0 0 auto; }
 
-  main { padding: 12px 12px 36px; }
+  main { padding: 12px 10px 36px; }
 
   .summary-bar { padding: 16px; gap: 14px; }
   .summary-bar .title { width: 100%; }
   .totals { width: 100%; gap: 10px; }
   .total-box { flex: 1; min-width: 0; }
 
-  thead th, tbody td { padding: 9px 10px; }
+  /* Tableau compact : Date · Jour · Arrivée · Départ tiennent sans scroll
+     latéral ; Heures · Montant restent accessibles en scrollant à droite. */
+  thead th, tbody td { padding: 8px 6px; font-size: .82rem; }
+  td.day { font-size: .82rem; }
   .cell-input {
-    width: 92px;
-    padding: 10px 9px;
-    font-size: 16px; /* évite le zoom auto iOS au focus */
+    width: 66px;
+    padding: 8px 4px;
+    font-size: 16px;      /* >= 16px : évite le zoom auto iOS au focus */
+    text-align: center;
   }
-  td.day { font-size: .85rem; }
+  /* Sur mobile, le sélecteur s'ouvre au tap : on masque l'icône horloge
+     pour gagner de la largeur sur la ligne. */
+  .cell-input::-webkit-calendar-picker-indicator { display: none; }
 }
