@@ -36,6 +36,7 @@
 
   /* Repères discrets */
   --row-alt: #8FA6A1;        /* zébrage : une ligne sur deux */
+  --row-hover: #00A092;      /* survol des lignes de tableau */
   --weekend: #5B6A67;        /* week-ends : encore 20% plus foncés */
   --today: rgba(2, 100, 100, .13);
 
@@ -420,7 +421,7 @@ tbody tr:nth-child(even) td { background: var(--row-alt); }
 /* Week-ends : 20% plus foncés que le zébrage (s'applique à toutes les lignes du week-end) */
 tbody tr.weekend td { background: var(--weekend); }
 
-tbody tr:hover td { background: var(--accent-soft); }
+tbody tr:hover td { background: var(--row-hover); }
 
 /* Ligne du jour */
 tbody tr.today td {
@@ -465,7 +466,7 @@ tfoot .amount { color: var(--money); }
 /* ============================ Récap ============================ */
 .recap-row { cursor: pointer; transition: background .12s ease; }
 .recap-row td.month { font-weight: 700; text-transform: capitalize; }
-.recap-row:hover td { background: var(--accent-soft); }
+.recap-row:hover td { background: var(--row-hover); }
 
 /* ============================ Pied ============================= */
 .app-footer {
