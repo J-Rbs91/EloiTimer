@@ -435,11 +435,9 @@ tbody tr.weekend td { background: var(--weekend); }
 
 tbody tr:hover td { background: var(--row-hover); }
 
-/* Ligne du jour */
-tbody tr.today td {
-  background: var(--today);
-  box-shadow: inset 3px 0 0 var(--accent);
-}
+/* Ligne du jour : fond teinté + un seul repère à gauche (pas de séparateurs entre champs) */
+tbody tr.today td { background: var(--today); }
+tbody tr.today td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 tbody tr.today:hover td { background: var(--today); }
 
 /* Champ ciblé à l'ouverture */
