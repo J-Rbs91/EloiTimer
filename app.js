@@ -450,15 +450,6 @@
     }
     table.appendChild(tbody);
 
-    const tfoot = document.createElement('tfoot');
-    const ftr = document.createElement('tr');
-    ftr.innerHTML = `
-      <td colspan="4">TOTAL</td>
-      <td class="num" data-total="hours">${fmtHours(totals.hours)}</td>
-      <td class="num amount" data-total="amount">${fmtEuro(totals.amount)}</td>`;
-    tfoot.appendChild(ftr);
-    table.appendChild(tfoot);
-
     wrap.appendChild(table);
     panel.appendChild(wrap);
     return panel;
@@ -492,10 +483,6 @@
     cells[5].textContent = fmtEuro(hours * state.rate);
 
     const totals = monthTotals(currentYear, month);
-    const table = tr.closest('table');
-    table.querySelector('[data-total="hours"]').textContent = fmtHours(totals.hours);
-    table.querySelector('[data-total="amount"]').textContent = fmtEuro(totals.amount);
-
     const titleTotal = document.querySelectorAll('.total-box .value');
     if (titleTotal.length === 2) {
       titleTotal[0].textContent = fmtHours(totals.hours);
