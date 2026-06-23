@@ -31,26 +31,43 @@
       <h1>Planning Eloi</h1>
     </div>
 
-    <div class="controls">
-      <label class="control">
-        <span>Année</span>
-        <select id="year-select"></select>
-      </label>
-
-      <label class="control">
-        <span>Taux horaire (€)</span>
-        <input id="rate-input" type="number" min="0" step="0.01" value="2.66" />
-      </label>
-
-      <div class="control actions">
-        <button id="share-btn" type="button" title="Partager les données via une feuille Google">☁ Partage</button>
-        <button id="export-btn" type="button" title="Exporter le mois affiché en CSV">Exporter CSV</button>
-        <button id="reset-btn" type="button" class="danger" title="Effacer les saisies de l'année affichée">Réinitialiser l'année</button>
-      </div>
-    </div>
+    <button id="settings-btn" type="button" class="settings-btn" title="Réglages" aria-label="Réglages">
+      <span class="gear" aria-hidden="true">⚙</span>
+      <span>Réglages</span>
+    </button>
 
     <div id="sync-status" class="sync-status hidden" aria-live="polite"></div>
   </header>
+
+  <!-- Réglages : année, taux horaire et actions (caché par défaut) -->
+  <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="modal-card">
+      <h2 id="settings-title">Réglages</h2>
+
+      <div class="controls">
+        <label class="control">
+          <span>Année</span>
+          <select id="year-select"></select>
+        </label>
+
+        <label class="control">
+          <span>Taux horaire (€)</span>
+          <input id="rate-input" type="number" min="0" step="0.01" value="2.66" />
+        </label>
+
+        <div class="control actions">
+          <button id="share-btn" type="button" title="Partager les données via une feuille Google">☁ Partage</button>
+          <button id="export-btn" type="button" title="Exporter le mois affiché en CSV">Exporter CSV</button>
+          <button id="reset-btn" type="button" class="danger" title="Effacer les saisies de l'année affichée">Réinitialiser l'année</button>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button id="settings-close" type="button" class="ghost">Fermer</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Fenêtre de configuration du partage (cachée par défaut) -->
   <div id="share-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="share-title">

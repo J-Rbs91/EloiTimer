@@ -36,7 +36,7 @@
 
   /* Repères discrets */
   --row-alt: #8FA6A1;        /* zébrage : une ligne sur deux */
-  --row-hover: #00A092;      /* survol des lignes de tableau */
+  --row-hover: #026464;      /* survol des lignes de tableau */
   --weekend: #5B6A67;        /* week-ends : encore 20% plus foncés */
   --today: rgba(2, 100, 100, .13);
 
@@ -289,6 +289,18 @@ button.danger:hover { background: var(--danger); color: var(--on-accent); border
 .modal-actions .spacer { flex: 1; }
 button.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
 button.ghost:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+
+/* Bouton Réglages (en-tête) */
+.settings-btn { display: inline-flex; align-items: center; gap: 8px; }
+.settings-btn .gear { font-size: 1.1em; line-height: 1; }
+
+/* Contrôles présentés dans le panneau Réglages : empilés verticalement */
+.modal .controls { flex-direction: column; align-items: stretch; gap: 16px; width: 100%; margin-bottom: 18px; }
+.modal .controls .control { width: 100%; flex: none; }
+.modal .controls select,
+.modal .controls input { width: 100%; min-width: 0; }
+.modal .controls .actions { flex-direction: column; gap: 10px; }
+.modal .controls .actions button { width: 100%; }
 
 /* ============================ Onglets =========================== */
 /* Les onglets reposent sur le fond marine : texte clair, pastille active accent. */

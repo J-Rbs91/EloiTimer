@@ -650,10 +650,29 @@
       rateTimer = setTimeout(pushRate, 700); // propage le taux à la feuille
     });
 
-    document.getElementById('share-btn').addEventListener('click', openShareModal);
-    document.getElementById('export-btn').addEventListener('click', exportCsv);
+    // Actions issues du panneau Réglages : on ferme d'abord les Réglages.
+    document.getElementById('share-btn').addEventListener('click', () => { closeSettings(); openShareModal(); });
+    document.getElementById('export-btn').addEventListener('click', () => { closeSettings(); exportCsv(); });
+    document.getElementById('reset-btn').addEventListener('click', () => { closeSettings(); openConfirmModal(); });
+  }
 
-    document.getElementById('reset-btn').addEventListener('click', openConfirmModal);
+  // ---- Panneau Réglages -------------------------------------------------
+  function openSettings() {
+    document.getElementById('settings-modal').classList.remove('hidden');
+  }
+
+  function closeSettings() {
+    document.getElementById('settings-modal').classList.add('hidden');
+  }
+
+  function setupSettingsModal() {
+    const modal = document.getElementById('settings-modal');
+    document.getElementById('settings-btn').addEventListener('click', openSettings);
+    document.getElementById('settings-close').addEventListener('click', closeSettings);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeSettings(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeSettings();
+    });
   }
 
   // ---- Fenêtre de confirmation de réinitialisation ----------------------
@@ -814,6 +833,7 @@
   if (syncEnabled() && sync.year) currentYear = sync.year;
 
   initControls();
+  setupSettingsModal();
   setupShareModal();
   setupConfirmModal();
   renderTabs();
