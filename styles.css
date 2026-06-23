@@ -35,7 +35,8 @@
   --money: #026464;
 
   /* Repères discrets */
-  --weekend: rgba(174, 195, 176, .35);
+  --row-alt: #8FA6A1;        /* zébrage : une ligne sur deux */
+  --weekend: #728581;        /* week-ends : 20% plus foncés que le zébrage */
   --today: rgba(2, 100, 100, .13);
 
   /* Erreurs / warnings */
@@ -405,6 +406,10 @@ tbody td {
 
 tbody tr:last-child td { border-bottom: none; }
 
+/* Alternance des lignes (zébrage) pour mieux les distinguer */
+tbody tr:nth-child(even) td { background: var(--row-alt); }
+
+/* Week-ends : 20% plus foncés que le zébrage (s'applique à toutes les lignes du week-end) */
 tbody tr.weekend td { background: var(--weekend); }
 
 tbody tr:hover td { background: var(--accent-soft); }
