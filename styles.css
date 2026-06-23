@@ -527,13 +527,15 @@ tfoot .amount { color: var(--money); }
 
   /* Tableau compact : Date · Jour · Arrivée · Départ tiennent sans scroll
      latéral ; Heures · Montant restent accessibles en scrollant à droite. */
-  thead th, tbody td { padding: 8px 6px; font-size: .82rem; }
-  td.day { font-size: .82rem; }
+  thead th, tbody td { padding: 7px 4px; font-size: .8rem; }
+  td.day { font-size: .8rem; }
   .cell-input {
-    width: 66px;
-    padding: 8px 4px;
+    width: 74px;
+    padding: 7px 4px;
     font-size: 16px;      /* >= 16px : évite le zoom auto iOS au focus */
     text-align: center;
+    -webkit-appearance: none;
+    appearance: none;     /* retire la flèche/chrome natif qui tronque la valeur */
   }
   /* Sur mobile, le sélecteur s'ouvre au tap : on masque l'icône horloge
      pour gagner de la largeur sur la ligne. */
