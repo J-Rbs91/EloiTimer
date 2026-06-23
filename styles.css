@@ -196,6 +196,14 @@ button.danger:hover { background: var(--danger); color: var(--on-accent); border
 }
 .modal-actions button:last-child:hover { filter: brightness(1.08); background: var(--accent); color: var(--on-accent); }
 
+/* Action destructrice dans une modale (ex. « Effacer définitivement ») */
+.modal-actions button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--on-accent);
+}
+.modal-actions button.danger:hover { filter: brightness(1.08); background: var(--danger); color: var(--on-accent); }
+
 /* ================= Indicateur de synchronisation ================ */
 .hidden { display: none !important; }
 

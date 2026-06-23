@@ -653,14 +653,44 @@
     document.getElementById('share-btn').addEventListener('click', openShareModal);
     document.getElementById('export-btn').addEventListener('click', exportCsv);
 
-    document.getElementById('reset-btn').addEventListener('click', () => {
-      if (!confirm(`Effacer toutes les saisies de l'année ${currentYear} ?`)) return;
-      const prefix = `${currentYear}-`;
-      Object.keys(state.entries).forEach((k) => {
-        if (k.startsWith(prefix)) delete state.entries[k];
-      });
-      save();
-      renderContent();
+    document.getElementById('reset-btn').addEventListener('click', openConfirmModal);
+  }
+
+  // ---- Fenêtre de confirmation de réinitialisation ----------------------
+  function openConfirmModal() {
+    const modal = document.getElementById('confirm-modal');
+    document.getElementById('confirm-message').textContent =
+      `Toutes les saisies de l'année ${currentYear} seront définitivement effacées. ` +
+      `Cette action est irréversible.`;
+    modal.classList.remove('hidden');
+    // Place le focus sur « Annuler » (option la moins destructrice) par défaut.
+    document.getElementById('confirm-cancel').focus();
+  }
+
+  function closeConfirmModal() {
+    document.getElementById('confirm-modal').classList.add('hidden');
+  }
+
+  function performReset() {
+    const prefix = `${currentYear}-`;
+    Object.keys(state.entries).forEach((k) => {
+      if (k.startsWith(prefix)) delete state.entries[k];
+    });
+    save();
+    renderContent();
+  }
+
+  function setupConfirmModal() {
+    const modal = document.getElementById('confirm-modal');
+    document.getElementById('confirm-cancel').addEventListener('click', closeConfirmModal);
+    document.getElementById('confirm-ok').addEventListener('click', () => {
+      closeConfirmModal();
+      performReset();
+    });
+    // Clic sur le fond ou touche Échap : annule (ne supprime rien).
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeConfirmModal(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeConfirmModal();
     });
   }
 
@@ -785,6 +815,7 @@
 
   initControls();
   setupShareModal();
+  setupConfirmModal();
   renderTabs();
   renderContent();
   focusTodayInput();
