@@ -531,8 +531,10 @@ tfoot .amount { color: var(--money); }
   td.day { font-size: .8rem; }
   .cell-input {
     width: 74px;
-    padding: 7px 4px;
-    font-size: 16px;      /* >= 16px : évite le zoom auto iOS au focus */
+    padding: 6px 2px;
+    font-size: 13px;      /* police réduite : la valeur entière tient malgré
+                             la zone réservée par le widget natif Android */
+    letter-spacing: -.2px;
     text-align: center;
     -webkit-appearance: none;
     appearance: none;     /* retire la flèche/chrome natif qui tronque la valeur */
