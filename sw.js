@@ -3,7 +3,7 @@
  * En ligne -> toujours la dernière version ; hors-ligne -> repli sur le cache.
  * Évite les versions figées en cache après un déploiement.
  */
-const CACHE = 'eloitimer-v18';
+const CACHE = 'eloitimer-v19';
 const ASSETS = [
   './',
   './index.html',

@@ -435,10 +435,11 @@ tbody tr.weekend td { background: var(--weekend); }
 
 tbody tr:hover td { background: var(--row-hover); }
 
-/* Ligne du jour : fond teinté + un seul repère à gauche (pas de séparateurs entre champs) */
-tbody tr.today td { background: var(--today); }
-tbody tr.today td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
-tbody tr.today:hover td { background: var(--today); }
+/* Ligne du jour : encadrement très fin #C23012 (haut/bas sur chaque cellule,
+   côtés sur la 1re et la dernière) — aucun séparateur entre les champs. */
+tbody tr.today td { box-shadow: inset 0 1px 0 #C23012, inset 0 -1px 0 #C23012; }
+tbody tr.today td:first-child { box-shadow: inset 0 1px 0 #C23012, inset 0 -1px 0 #C23012, inset 1px 0 0 #C23012; }
+tbody tr.today td:last-child { box-shadow: inset 0 1px 0 #C23012, inset 0 -1px 0 #C23012, inset -1px 0 0 #C23012; }
 
 /* Champ ciblé à l'ouverture */
 .cell-input.focus-today {
@@ -447,7 +448,7 @@ tbody tr.today:hover td { background: var(--today); }
 }
 
 td.num, th.num { text-align: right; }
-td.day { color: var(--muted); text-transform: capitalize; }
+td.day { color: var(--muted); text-transform: capitalize; font-weight: 700; }
 td.amount { font-weight: 700; color: var(--money); }
 
 .cell-input {
