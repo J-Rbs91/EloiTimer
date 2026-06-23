@@ -3,7 +3,7 @@
  * Palette fixe imposée :
  *   fond                       #00172C
  *   cartes/champs primaire     #EFF6E0
- *   cartes/champs secondaire   #AEC3B0
+ *   cartes/champs secondaire   #3F7F7A
  *   hover & accentuation       #026464
  *   erreurs & warnings         #C23012
  *   bordures & police          #04111E   (bordures fines, radius doux)
@@ -16,7 +16,7 @@
   /* Surfaces */
   --bg: #00172C;
   --panel: #EFF6E0;          /* cartes & champs — primaire */
-  --panel-2: #AEC3B0;        /* cartes & champs — secondaire */
+  --panel-2: #3F7F7A;        /* cartes & champs — secondaire */
   --elevated: #EFF6E0;       /* modale */
 
   /* Encre / texte / bordures */
