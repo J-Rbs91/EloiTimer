@@ -329,6 +329,8 @@
     let hours = 0;
     const n = daysInMonth(year, month);
     for (let day = 1; day <= n; day++) {
+      const dow = new Date(year, month, day).getDay();
+      if (dow === 0 || dow === 6) continue; // week-ends : non travaillés
       const { arr, dep } = getEntry(year, month, day);
       hours += computeHours(arr, dep);
     }
@@ -407,11 +409,12 @@
     for (let day = 1; day <= n; day++) {
       const date = new Date(currentYear, month, day);
       const dow = date.getDay();
+      const isWeekend = dow === 0 || dow === 6;
       const entry = getEntry(currentYear, month, day);
       const hours = computeHours(entry.arr, entry.dep);
 
       const tr = document.createElement('tr');
-      if (dow === 0 || dow === 6) tr.classList.add('weekend');
+      if (isWeekend) tr.classList.add('weekend');
       if (
         day === now.getDate() &&
         month === now.getMonth() &&
@@ -422,6 +425,16 @@
 
       tr.appendChild(td(`${pad2(day)}/${pad2(month + 1)}/${currentYear}`));
       tr.appendChild(td(WEEKDAYS[dow], 'day'));
+
+      // Week-ends : on n'affiche que la date et le nom du jour (cellules vides).
+      if (isWeekend) {
+        tr.appendChild(td('', 'empty'));
+        tr.appendChild(td('', 'empty'));
+        tr.appendChild(td('', 'num empty'));
+        tr.appendChild(td('', 'num empty'));
+        tbody.appendChild(tr);
+        continue;
+      }
 
       tr.appendChild(timeCell(month, day, 'arr', entry.arr));
       tr.appendChild(timeCell(month, day, 'dep', entry.dep));
