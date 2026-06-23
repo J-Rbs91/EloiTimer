@@ -12,10 +12,12 @@ permissions:
   pages: write
   id-token: write
 
-# Un seul déploiement à la fois ; on n'annule pas un déploiement en cours
+# Un seul déploiement Pages à la fois. En cas de pushes rapprochés, on annule
+# proprement le run en cours (statut « cancelled ») pour ne garder que le
+# dernier — évite les faux échecs « Deployment cancelled » côté Pages.
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
