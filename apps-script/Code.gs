@@ -60,7 +60,9 @@ function readAll() {
       var rv = sh.getRange(RATE_CELL).getValue();
       if (typeof rv === 'number' && rv > 0) rate = rv;
     }
-    var values = sh.getRange(FIRST_DATA_ROW, COL_ARR, 31, 2).getValues(); // C..D, 31 lignes
+    // getDisplayValues() : on lit le TEXTE affiché ("09:00"), pas un objet Date.
+    // Évite toute réinterprétation de fuseau horaire (bug du décalage des heures).
+    var values = sh.getRange(FIRST_DATA_ROW, COL_ARR, 31, 2).getDisplayValues(); // C..D, 31 lignes
     var days = {};
     for (var i = 0; i < 31; i++) {
       var arr = fmtTime(values[i][0]);
