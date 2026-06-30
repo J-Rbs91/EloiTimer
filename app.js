@@ -455,18 +455,32 @@
     return panel;
   }
 
-  /** Cellule contenant un champ horaire (arrivée/départ). */
+  /**
+   * Cellule contenant un champ horaire (arrivée/départ).
+   * On n'utilise PAS <input type="time"> : sur Android, le sélecteur natif
+   * (horloge système) tronque ses propres boutons (« Définir » coupé). On
+   * affiche donc un champ en lecture seule qui ouvre notre sélecteur maison,
+   * dont on maîtrise entièrement la mise en page.
+   */
   function timeCell(month, day, field, value) {
     const cell = document.createElement('td');
     const input = document.createElement('input');
-    input.type = 'time';
+    input.type = 'text';
     input.className = 'cell-input';
+    input.readOnly = true;
+    input.inputMode = 'none';
+    input.placeholder = '--:--';
     input.dataset.day = String(day);
+    input.dataset.month = String(month);
     input.dataset.field = field;
     input.value = value || '';
-    input.addEventListener('change', () => {
-      setEntry(currentYear, month, day, field, input.value);
-      refreshRow(input, month, day);
+    const open = (e) => {
+      e.preventDefault();
+      openTimePicker(input);
+    };
+    input.addEventListener('click', open);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') open(e);
     });
     cell.appendChild(input);
     return cell;
@@ -713,6 +727,81 @@
     });
   }
 
+  // ---- Sélecteur d'horaire maison (remplace le picker natif) ------------
+  // Cellule en cours d'édition (renseignée à l'ouverture du sélecteur).
+  let activeTimeCell = null;
+
+  function closeTimeModal() {
+    document.getElementById('time-modal').classList.add('hidden');
+    activeTimeCell = null;
+  }
+
+  /** Ouvre le sélecteur pour le champ horaire associé à `input`. */
+  function openTimePicker(input) {
+    const modal = document.getElementById('time-modal');
+    const hoursSel = document.getElementById('time-hours');
+    const minutesSel = document.getElementById('time-minutes');
+    const month = Number(input.dataset.month);
+    const day = Number(input.dataset.day);
+    const field = input.dataset.field;
+    activeTimeCell = { input, month, day, field };
+
+    // Titre : « Arrivée » / « Départ » + la date concernée.
+    document.getElementById('time-title').textContent =
+      field === 'dep' ? 'Heure de départ' : "Heure d'arrivée";
+    document.getElementById('time-subtitle').textContent =
+      `${pad2(day)}/${pad2(month + 1)}/${currentYear} · ${WEEKDAYS[new Date(currentYear, month, day).getDay()]}`;
+
+    // Valeur courante, ou 09:00 par défaut si le champ est vide.
+    const m = /^(\d{1,2}):(\d{2})$/.exec((input.value || '').trim());
+    hoursSel.value = m ? pad2(Number(m[1])) : '09';
+    minutesSel.value = m ? pad2(Number(m[2])) : '00';
+
+    modal.classList.remove('hidden');
+    hoursSel.focus();
+  }
+
+  /** Applique (ou efface) la valeur saisie sur la cellule active. */
+  function commitTime(value) {
+    if (!activeTimeCell) return;
+    const { input, month, day, field } = activeTimeCell;
+    input.value = value;
+    setEntry(currentYear, month, day, field, value);
+    refreshRow(input, month, day);
+    closeTimeModal();
+  }
+
+  function setupTimeModal() {
+    const modal = document.getElementById('time-modal');
+    const hoursSel = document.getElementById('time-hours');
+    const minutesSel = document.getElementById('time-minutes');
+
+    // Remplit les listes Heures (00–23) et Minutes (00–59).
+    for (let h = 0; h < 24; h++) {
+      const opt = document.createElement('option');
+      opt.value = pad2(h);
+      opt.textContent = pad2(h);
+      hoursSel.appendChild(opt);
+    }
+    for (let mi = 0; mi < 60; mi++) {
+      const opt = document.createElement('option');
+      opt.value = pad2(mi);
+      opt.textContent = pad2(mi);
+      minutesSel.appendChild(opt);
+    }
+
+    document.getElementById('time-confirm').addEventListener('click', () => {
+      commitTime(`${hoursSel.value}:${minutesSel.value}`);
+    });
+    document.getElementById('time-clear').addEventListener('click', () => commitTime(''));
+    document.getElementById('time-cancel').addEventListener('click', closeTimeModal);
+    // Clic sur le fond ou touche Échap : annule (ne modifie rien).
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeTimeModal(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeTimeModal();
+    });
+  }
+
   // ---- Fenêtre de partage (configuration de la synchro) -----------------
   function openShareModal() {
     const modal = document.getElementById('share-modal');
@@ -836,6 +925,7 @@
   setupSettingsModal();
   setupShareModal();
   setupConfirmModal();
+  setupTimeModal();
   renderTabs();
   renderContent();
   focusTodayInput();

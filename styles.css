@@ -152,7 +152,8 @@ body {
 .control select:focus,
 .cell-input:focus,
 .modal-field input:focus,
-.modal-field select:focus {
+.modal-field select:focus,
+.time-col select:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 4px var(--accent-ring);
@@ -285,8 +286,49 @@ button.danger:hover { background: var(--danger); color: var(--on-accent); border
 .modal-feedback.err { color: var(--danger); }
 .modal-feedback.info { color: var(--muted); }
 
-.modal-actions { display: flex; align-items: center; gap: 10px; }
-.modal-actions .spacer { flex: 1; }
+.modal-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.modal-actions .spacer { flex: 1; min-width: 0; }
+
+/* Sélecteur d'horaire maison */
+.time-card { max-width: 360px; }
+.time-picker {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 12px;
+  margin: 6px 0 22px;
+}
+.time-col {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: 1;
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: center;
+}
+.time-col select {
+  font: inherit;
+  font-size: 1.5rem;
+  font-weight: 700;
+  text-align: center;
+  text-align-last: center;
+  color: var(--ink);
+  padding: 12px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--panel);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.time-colon {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--ink);
+  padding-bottom: 10px;
+}
+/* Sur écran étroit, les boutons s'empilent plutôt que déborder. */
+.time-actions button { flex: 1 1 auto; }
 button.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
 button.ghost:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 
@@ -459,9 +501,9 @@ td.amount { font-weight: 700; color: var(--money); }
   border-radius: var(--radius-xs);
   background: var(--panel);
   color: var(--ink);
+  cursor: pointer;
   transition: border-color .15s ease, box-shadow .15s ease;
 }
-.cell-input::-webkit-calendar-picker-indicator { opacity: .55; }
 .cell-input:hover { border-color: var(--accent); }
 
 tfoot td {
@@ -532,14 +574,8 @@ tfoot .amount { color: var(--money); }
   .cell-input {
     width: 74px;
     padding: 6px 2px;
-    font-size: 13px;      /* police réduite : la valeur entière tient malgré
-                             la zone réservée par le widget natif Android */
+    font-size: 13px;
     letter-spacing: -.2px;
     text-align: center;
-    -webkit-appearance: none;
-    appearance: none;     /* retire la flèche/chrome natif qui tronque la valeur */
   }
-  /* Sur mobile, le sélecteur s'ouvre au tap : on masque l'icône horloge
-     pour gagner de la largeur sur la ligne. */
-  .cell-input::-webkit-calendar-picker-indicator { display: none; }
 }

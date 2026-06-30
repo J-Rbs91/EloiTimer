@@ -114,6 +114,33 @@
     </div>
   </div>
 
+  <!-- Sélecteur d'horaire maison (remplace le picker natif, caché par défaut) -->
+  <div id="time-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="time-title">
+    <div class="modal-card time-card">
+      <h2 id="time-title">Horaire</h2>
+      <p class="modal-intro" id="time-subtitle"></p>
+
+      <div class="time-picker">
+        <label class="time-col">
+          <span>Heures</span>
+          <select id="time-hours" aria-label="Heures"></select>
+        </label>
+        <span class="time-colon" aria-hidden="true">:</span>
+        <label class="time-col">
+          <span>Minutes</span>
+          <select id="time-minutes" aria-label="Minutes"></select>
+        </label>
+      </div>
+
+      <div class="modal-actions time-actions">
+        <button id="time-clear" type="button" class="ghost">Effacer</button>
+        <span class="spacer"></span>
+        <button id="time-cancel" type="button" class="ghost">Annuler</button>
+        <button id="time-confirm" type="button">Valider</button>
+      </div>
+    </div>
+  </div>
+
   <nav class="tabs" id="tabs" aria-label="Onglets des mois"></nav>
 
   <main id="content"></main>
