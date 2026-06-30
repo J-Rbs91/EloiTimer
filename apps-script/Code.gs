@@ -5,7 +5,7 @@
  * Puis : Déployer → Nouveau déploiement → type « Application Web »
  *        - Exécuter en tant que : Moi
  *        - Qui a accès : Tout le monde
- * Copie l'URL « /exec » obtenue et colle-la dans la PWA (bouton ☁ Partage).
+ * Copie l'URL « /exec » obtenue et colle-la dans la PWA (bouton ☁ Synchronisation).
  *
  * Cette URL est le LIEN SECRET : quiconque la possède peut lire et écrire.
  *
