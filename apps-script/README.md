@@ -24,7 +24,7 @@ tu n'as **aucun serveur** à installer ni à maintenir.
 
 ## Connexion de l'app
 
-1. Ouvre la PWA, clique le bouton **☁ Partage**.
+1. Ouvre la PWA, clique le bouton **☁ Synchronisation**.
 2. Colle l'URL `/exec`, choisis l'**année** que représente la feuille
    (ex. 2027), puis **Tester & enregistrer**.
 3. C'est tout : chaque saisie est écrite dans la feuille, et l'app se
@@ -38,6 +38,11 @@ tu n'as **aucun serveur** à installer ni à maintenir.
 - L'app reste la référence des calculs (arrondi à la demi-heure inclus) : elle
   écrit aussi les colonnes *Heures* et *Montant* pour que la feuille affiche les
   mêmes valeurs.
+- **Taux horaire daté** : l'historique des taux est conservé dans un onglet
+  **`Taux`** (créé automatiquement) — colonne A = date de début (`AAAA-MM-JJ`),
+  colonne B = taux €/h. Chaque jour est payé au taux en vigueur à sa date ; la
+  cellule `B1` des onglets mensuels reflète le taux du jour courant. Si tu
+  recolles une ancienne version du script, l'onglet `Taux` est simplement ignoré.
 - Hors-ligne, l'app fonctionne sur son cache local et renvoie les modifications
   dès que la connexion revient.
 - En cas de modification simultanée, c'est la **dernière écriture qui gagne**

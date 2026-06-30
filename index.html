@@ -50,10 +50,14 @@
           <select id="year-select"></select>
         </label>
 
-        <label class="control">
-          <span>Taux horaire (€)</span>
-          <input id="rate-input" type="number" min="0" step="0.01" value="2.66" />
-        </label>
+        <div class="control">
+          <span>Taux horaire</span>
+          <button id="rates-btn" type="button" class="rate-summary"
+                  title="Gérer les taux horaires et leur historique">
+            <span id="current-rate-display">—</span>
+            <span class="rate-summary-action">Gérer ›</span>
+          </button>
+        </div>
 
         <div class="control actions">
           <button id="share-btn" type="button" title="Synchroniser les données via une feuille Google">☁ Synchronisation</button>
@@ -110,6 +114,40 @@
         <span class="spacer"></span>
         <button id="confirm-cancel" type="button" class="ghost">Annuler</button>
         <button id="confirm-ok" type="button" class="danger">Effacer définitivement</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gestion des taux horaires (historique daté, caché par défaut) -->
+  <div id="rates-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="rates-title">
+    <div class="modal-card">
+      <h2 id="rates-title">Taux horaire</h2>
+      <p class="modal-intro">
+        Indique un taux et la date à partir de laquelle il s'applique. Le taux
+        le plus récent reste en vigueur indéfiniment, jusqu'à ce que tu en
+        ajoutes un nouveau. Chaque journée est payée au taux en vigueur à sa date.
+      </p>
+
+      <ul id="rates-list" class="rates-list"></ul>
+
+      <div class="rates-form">
+        <div class="rates-form-grid">
+          <label class="modal-field">
+            <span>Nouveau taux (€/h)</span>
+            <input id="rate-value" type="number" min="0" step="0.01" inputmode="decimal" placeholder="2,80" />
+          </label>
+          <label class="modal-field">
+            <span>À partir du</span>
+            <input id="rate-from" type="date" />
+          </label>
+        </div>
+        <p id="rates-feedback" class="modal-feedback"></p>
+        <button id="rate-add" type="button">Ajouter ce taux</button>
+      </div>
+
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button id="rates-close" type="button" class="ghost">Fermer</button>
       </div>
     </div>
   </div>

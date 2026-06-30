@@ -329,6 +329,72 @@ button.danger:hover { background: var(--danger); color: var(--on-accent); border
 }
 /* Sur écran étroit, les boutons s'empilent plutôt que déborder. */
 .time-actions button { flex: 1 1 auto; }
+
+/* Résumé du taux en cours dans les Réglages (ouvre la gestion des taux) */
+.rate-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--panel);
+}
+.rate-summary:hover { border-color: var(--accent); background: var(--panel); color: var(--ink); }
+.rate-summary-action { color: var(--accent); font-weight: 800; white-space: nowrap; }
+
+/* Liste de l'historique des taux */
+.rates-list { list-style: none; margin: 0 0 18px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.rate-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--panel);
+}
+.rate-item.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.rate-info { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.rate-value { font-size: 1.05rem; font-weight: 800; color: var(--ink); }
+.rate-period { font-size: .8rem; font-weight: 600; color: var(--muted); }
+.rate-badge {
+  align-self: flex-start;
+  margin-top: 3px;
+  font-size: .68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--on-accent);
+  background: var(--accent);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.rate-del {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--danger);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+}
+.rate-del:hover:not(:disabled) { background: var(--danger); color: var(--on-accent); border-color: var(--danger); }
+.rate-del:disabled { opacity: .35; cursor: not-allowed; }
+
+/* Formulaire d'ajout d'un taux */
+.rates-form-grid { display: flex; gap: 12px; }
+.rates-form-grid .modal-field { flex: 1; min-width: 0; margin-bottom: 8px; }
+.rates-form-grid .modal-field input { width: 100%; min-width: 0; }
+.rates-form #rate-add { width: 100%; margin-top: 4px; }
 button.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
 button.ghost:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 

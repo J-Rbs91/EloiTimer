@@ -5,7 +5,7 @@
  *   - 12 onglets mensuels (Janvier → Décembre) + un onglet "Récap mensuel"
  *   - Colonnes : Date | Jour | Arrivée | Départ | Heures | Montant (€)
  *   - Heures  = Départ − Arrivée
- *   - Montant = Heures × taux horaire
+ *   - Montant = Heures × taux horaire en vigueur à la date du jour
  *   - TOTAL des heures et des montants par mois, et récapitulatif annuel
  *
  * Aucune dépendance : HTML/CSS/JS pur. Les saisies sont conservées dans
@@ -38,8 +38,16 @@
   const fmtEuro = (v) => `${nf2.format(v)} €`;
   const pad2 = (n) => String(n).padStart(2, '0');
 
+  // ---- Taux horaire (historique daté) -----------------------------------
+  // Le taux change dans le temps : on conserve une liste de taux, chacun
+  // valable À PARTIR d'une date (`from`, "YYYY-MM-DD"). Le taux appliqué à
+  // une journée est celui dont la date de début est la plus récente sans
+  // dépasser la date de la journée. Le dernier taux s'applique indéfiniment.
+  const DEFAULT_RATE = 2.66;
+  const EPOCH = '2000-01-01'; // « depuis toujours » (taux initial / migration)
+
   // ---- État persistant ---------------------------------------------------
-  /** @type {{rate:number, entries:Object<string,{arr?:string,dep?:string}>}} */
+  /** @type {{rates:Array<{from:string,value:number}>, entries:Object<string,{arr?:string,dep?:string}>}} */
   let state = load();
   let currentYear = new Date().getFullYear();
   let currentMonth = new Date().getMonth(); // 0-11, ou -1 pour le récap
@@ -50,14 +58,63 @@
       if (raw) {
         const parsed = JSON.parse(raw);
         return {
-          rate: typeof parsed.rate === 'number' ? parsed.rate : 2.66,
+          rates: normalizeRates(parsed.rates, parsed.rate),
           entries: parsed.entries && typeof parsed.entries === 'object' ? parsed.entries : {},
         };
       }
     } catch (e) {
       console.warn('Lecture du stockage impossible :', e);
     }
-    return { rate: 2.66, entries: {} };
+    return { rates: [{ from: EPOCH, value: DEFAULT_RATE }], entries: {} };
+  }
+
+  /**
+   * Construit une liste de taux valide à partir des données stockées.
+   * Gère la migration de l'ancien format (un seul `rate` numérique).
+   */
+  function normalizeRates(rates, legacyRate) {
+    let list = Array.isArray(rates)
+      ? rates.filter((r) => r && typeof r.value === 'number' && r.value >= 0 && typeof r.from === 'string')
+             .map((r) => ({ from: r.from, value: r.value }))
+      : [];
+    if (!list.length) {
+      const value = typeof legacyRate === 'number' && legacyRate >= 0 ? legacyRate : DEFAULT_RATE;
+      list = [{ from: EPOCH, value }];
+    }
+    return sortRates(list);
+  }
+
+  function sortRates(list) {
+    return list.slice().sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
+  }
+
+  /** Taux applicable à une date "YYYY-MM-DD". */
+  function rateForDate(dateStr) {
+    const sorted = sortRates(state.rates);
+    if (!sorted.length) return 0;
+    let value = sorted[0].value; // avant le tout premier taux : on prend le plus ancien
+    for (const item of sorted) {
+      if (item.from <= dateStr) value = item.value;
+      else break;
+    }
+    return value;
+  }
+
+  /** Taux applicable à une journée (année/mois 0-11/jour). */
+  function rateForDay(year, month, day) {
+    return rateForDate(`${year}-${pad2(month + 1)}-${pad2(day)}`);
+  }
+
+  /** Taux en vigueur aujourd'hui (= le taux « en cours »). */
+  function currentRate() {
+    const now = new Date();
+    return rateForDate(`${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`);
+  }
+
+  /** "YYYY-MM-DD" -> "DD/MM/YYYY" pour l'affichage. */
+  function fmtDateFr(dateStr) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr || '');
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : dateStr;
   }
 
   function save() {
@@ -169,8 +226,8 @@
         action: 'write', year: y, month: mm, day: dd,
         arr: entry.arr || '', dep: entry.dep || '',
         hours: hours ? hours.toFixed(2) : '',
-        amount: hours ? (hours * state.rate).toFixed(2) : '',
-        jour: WEEKDAYS[dow], rate: state.rate,
+        amount: hours ? (hours * rateForDay(y, month, dd)).toFixed(2) : '',
+        jour: WEEKDAYS[dow],
       });
       return !!(data && data.ok);
     } catch (e) {
@@ -195,11 +252,13 @@
 
   function applyCloudData(data) {
     const year = syncedYear();
-    if (typeof data.rate === 'number' && data.rate > 0) {
-      state.rate = data.rate;
-      const ri = document.getElementById('rate-input');
-      if (ri) ri.value = state.rate;
+    // Historique des taux (nouveau format) ; repli sur l'ancien taux unique.
+    if (Array.isArray(data.rates) && data.rates.length) {
+      state.rates = normalizeRates(data.rates, null);
+    } else if (typeof data.rate === 'number' && data.rate > 0) {
+      state.rates = normalizeRates(null, data.rate);
     }
+    renderRatesUi();
     // Remplace les entrées de l'année synchronisée par celles de la feuille
     const prefix = `${year}-`;
     Object.keys(state.entries).forEach((k) => { if (k.startsWith(prefix)) delete state.entries[k]; });
@@ -220,11 +279,11 @@
     renderContent();
   }
 
-  /** Propage un changement de taux (B1 de tous les onglets + recalcul des montants). */
-  function pushRate() {
+  /** Propage l'historique des taux à la feuille + recalcule les montants. */
+  function pushRates() {
     if (!syncEnabled()) return;
-    jsonp({ action: 'setrate', rate: state.rate }).catch(() => {});
-    // Recalcule les montants déjà écrits pour l'année synchronisée
+    jsonp({ action: 'setrates', rates: JSON.stringify(state.rates) }).catch(() => {});
+    // Les montants déjà écrits dépendent du taux : on re-pousse l'année synchro.
     const prefix = `${syncedYear()}-`;
     Object.keys(state.entries).forEach((k) => { if (k.startsWith(prefix)) pending.set(k, true); });
     savePending();
@@ -327,14 +386,17 @@
   /** Totaux (heures + montant) d'un mois donné. */
   function monthTotals(year, month) {
     let hours = 0;
+    let amount = 0;
     const n = daysInMonth(year, month);
     for (let day = 1; day <= n; day++) {
       const dow = new Date(year, month, day).getDay();
       if (dow === 0 || dow === 6) continue; // week-ends : non travaillés
       const { arr, dep } = getEntry(year, month, day);
-      hours += computeHours(arr, dep);
+      const h = computeHours(arr, dep);
+      hours += h;
+      amount += h * rateForDay(year, month, day); // chaque jour au taux de sa date
     }
-    return { hours, amount: hours * state.rate };
+    return { hours, amount };
   }
 
   // =======================================================================
@@ -443,7 +505,7 @@
       hoursCell.title = roundInfo(entry.arr, entry.dep);
       tr.appendChild(hoursCell);
 
-      const amountCell = td(fmtEuro(hours * state.rate), 'num amount');
+      const amountCell = td(fmtEuro(hours * rateForDay(currentYear, month, day)), 'num amount');
       tr.appendChild(amountCell);
 
       tbody.appendChild(tr);
@@ -494,7 +556,7 @@
     const cells = tr.querySelectorAll('td');
     cells[4].textContent = hours ? fmtHours(hours) : '0,00';
     cells[4].title = roundInfo(entry.arr, entry.dep);
-    cells[5].textContent = fmtEuro(hours * state.rate);
+    cells[5].textContent = fmtEuro(hours * rateForDay(currentYear, month, day));
 
     const totals = monthTotals(currentYear, month);
     const titleTotal = document.querySelectorAll('.total-box .value');
@@ -583,24 +645,25 @@
       rows.push(['TOTAL ANNÉE', fmtHours(yHours), fmtHours(yAmount)]);
     } else {
       const month = currentMonth;
-      rows.push([`Taux horaire`, fmtHours(state.rate)]);
-      rows.push(['Date', 'Jour', 'Arrivée', 'Départ', 'Heures', 'Montant (€)']);
+      rows.push(['Date', 'Jour', 'Arrivée', 'Départ', 'Heures', 'Taux (€/h)', 'Montant (€)']);
       const n = daysInMonth(currentYear, month);
       for (let day = 1; day <= n; day++) {
         const date = new Date(currentYear, month, day);
         const entry = getEntry(currentYear, month, day);
         const hours = computeHours(entry.arr, entry.dep);
+        const rate = rateForDay(currentYear, month, day);
         rows.push([
           `${pad2(day)}/${pad2(month + 1)}/${currentYear}`,
           WEEKDAYS[date.getDay()],
           entry.arr || '',
           entry.dep || '',
           fmtHours(hours),
-          fmtHours(hours * state.rate),
+          fmtHours(rate),
+          fmtHours(hours * rate),
         ]);
       }
       const t = monthTotals(currentYear, month);
-      rows.push(['TOTAL', '', '', '', fmtHours(t.hours), fmtHours(t.amount)]);
+      rows.push(['TOTAL', '', '', '', fmtHours(t.hours), '', fmtHours(t.amount)]);
     }
 
     // CSV séparé par ; (convention FR) avec échappement des guillemets
@@ -652,17 +715,12 @@
       renderContent();
     });
 
-    const rateInput = document.getElementById('rate-input');
-    rateInput.value = state.rate;
-    let rateTimer = null;
-    rateInput.addEventListener('input', () => {
-      const v = parseFloat(rateInput.value);
-      state.rate = Number.isFinite(v) && v >= 0 ? v : 0;
-      save();
-      renderContent();
-      clearTimeout(rateTimer);
-      rateTimer = setTimeout(pushRate, 700); // propage le taux à la feuille
+    // Le taux horaire se gère désormais dans une fenêtre dédiée (historique daté).
+    document.getElementById('rates-btn').addEventListener('click', () => {
+      closeSettings();
+      openRatesModal();
     });
+    renderRatesUi();
 
     // Actions issues du panneau Réglages : on ferme d'abord les Réglages.
     document.getElementById('share-btn').addEventListener('click', () => { closeSettings(); openShareModal(); });
@@ -724,6 +782,159 @@
     modal.addEventListener('click', (e) => { if (e.target === modal) closeConfirmModal(); });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeConfirmModal();
+    });
+  }
+
+  // ---- Gestion des taux horaires (historique daté) ----------------------
+  /** "YYYY-MM-DD" -> veille (jour précédent), en "YYYY-MM-DD". */
+  function dayBefore(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d - 1);
+    return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`;
+  }
+
+  function todayKey() {
+    const now = new Date();
+    return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+  }
+
+  /** Libellé de la période d'application d'un taux (liste triée croissante). */
+  function ratePeriodLabel(sorted, i) {
+    const item = sorted[i];
+    const isFirst = i === 0;
+    const isLast = i === sorted.length - 1;
+    if (isLast) {
+      // Dernier taux : ouvert indéfiniment.
+      if (item.from > todayKey()) return `À partir du ${fmtDateFr(item.from)}`; // pas encore en vigueur
+      if (isFirst && item.from === EPOCH) return 'Depuis le début · en cours';
+      return `Depuis le ${fmtDateFr(item.from)} · en cours`;
+    }
+    const end = fmtDateFr(dayBefore(sorted[i + 1].from));
+    if (isFirst && item.from === EPOCH) return `Jusqu'au ${end}`;
+    return `Du ${fmtDateFr(item.from)} au ${end}`;
+  }
+
+  /** Met à jour l'affichage du taux en cours (Réglages) + la liste si ouverte. */
+  function renderRatesUi() {
+    const disp = document.getElementById('current-rate-display');
+    if (disp) disp.textContent = `${fmtEuro(currentRate())}/h`;
+    const list = document.getElementById('rates-list');
+    if (list && !document.getElementById('rates-modal').classList.contains('hidden')) {
+      renderRatesList();
+    }
+  }
+
+  function renderRatesList() {
+    const list = document.getElementById('rates-list');
+    list.innerHTML = '';
+    const sorted = sortRates(state.rates);
+    const today = todayKey();
+    // Indice du taux en vigueur aujourd'hui (le plus récent <= aujourd'hui).
+    let activeIdx = 0;
+    sorted.forEach((it, i) => { if (it.from <= today) activeIdx = i; });
+
+    // Affichage du plus récent au plus ancien.
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      const it = sorted[i];
+      const li = el('li', 'rate-item');
+      if (i === activeIdx) li.classList.add('active');
+
+      const info = el('div', 'rate-info');
+      const val = el('span', 'rate-value');
+      val.textContent = `${fmtEuro(it.value)}/h`;
+      const per = el('span', 'rate-period');
+      per.textContent = ratePeriodLabel(sorted, i);
+      info.appendChild(val);
+      info.appendChild(per);
+      if (i === activeIdx) {
+        const badge = el('span', 'rate-badge');
+        badge.textContent = 'actuel';
+        info.appendChild(badge);
+      }
+      li.appendChild(info);
+
+      // Suppression (interdite s'il ne reste qu'un seul taux).
+      const del = el('button', 'rate-del');
+      del.type = 'button';
+      del.textContent = '✕';
+      del.title = 'Supprimer ce taux';
+      del.setAttribute('aria-label', 'Supprimer ce taux');
+      if (sorted.length <= 1) del.disabled = true;
+      else del.addEventListener('click', () => deleteRate(it.from));
+      li.appendChild(del);
+
+      list.appendChild(li);
+    }
+  }
+
+  function setRatesFeedback(text, kind) {
+    const fb = document.getElementById('rates-feedback');
+    if (!fb) return;
+    fb.textContent = text || '';
+    fb.className = 'modal-feedback' + (kind ? ' ' + kind : '');
+  }
+
+  function addRate() {
+    const valInput = document.getElementById('rate-value');
+    const fromInput = document.getElementById('rate-from');
+    const value = parseFloat(valInput.value);
+    const from = fromInput.value; // "YYYY-MM-DD" (ou "" si non saisi)
+
+    if (!Number.isFinite(value) || value < 0) {
+      setRatesFeedback('Saisis un taux valide (€/h).', 'err');
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      setRatesFeedback("Choisis une date d'entrée en vigueur.", 'err');
+      return;
+    }
+    // Une seule entrée par date : on remplace la valeur si la date existe déjà.
+    const existing = state.rates.find((r) => r.from === from);
+    if (existing) existing.value = value;
+    else state.rates.push({ from, value });
+    state.rates = sortRates(state.rates);
+
+    save();
+    if (syncEnabled()) pushRates();
+    renderContent();      // recalcule tous les montants affichés
+    renderRatesList();
+    renderRatesUi();
+    valInput.value = '';
+    setRatesFeedback(`Taux ${fmtEuro(value)}/h enregistré (depuis le ${fmtDateFr(from)}).`, 'ok');
+  }
+
+  function deleteRate(from) {
+    if (state.rates.length <= 1) return;
+    state.rates = sortRates(state.rates.filter((r) => r.from !== from));
+    save();
+    if (syncEnabled()) pushRates();
+    renderContent();
+    renderRatesList();
+    renderRatesUi();
+    setRatesFeedback('Taux supprimé.', 'info');
+  }
+
+  function openRatesModal() {
+    const modal = document.getElementById('rates-modal');
+    setRatesFeedback('');
+    // Date par défaut = aujourd'hui, pour éviter une saisie vide.
+    const fromInput = document.getElementById('rate-from');
+    if (!fromInput.value) fromInput.value = todayKey();
+    modal.classList.remove('hidden');
+    renderRatesList();
+  }
+
+  function closeRatesModal() {
+    document.getElementById('rates-modal').classList.add('hidden');
+  }
+
+  function setupRatesModal() {
+    const modal = document.getElementById('rates-modal');
+    document.getElementById('rate-add').addEventListener('click', addRate);
+    document.getElementById('rates-close').addEventListener('click', closeRatesModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeRatesModal(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeRatesModal();
     });
   }
 
@@ -925,6 +1136,7 @@
   setupSettingsModal();
   setupShareModal();
   setupConfirmModal();
+  setupRatesModal();
   setupTimeModal();
   renderTabs();
   renderContent();
