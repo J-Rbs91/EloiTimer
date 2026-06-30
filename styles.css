@@ -542,6 +542,9 @@ tbody tr:nth-child(even) td { background: var(--row-alt); }
 tbody tr.weekend td { background: var(--weekend); }
 
 tbody tr:hover td { background: var(--row-hover); }
+/* Au survol, le montant (sinon teal sur fond teal) passe en orange,
+   le même que l'encadrement de la ligne du jour, pour rester lisible. */
+tbody tr:hover td.amount { color: #C23012; }
 
 /* Ligne du jour : encadrement très fin #C23012 (haut/bas sur chaque cellule,
    côtés sur la 1re et la dernière) — aucun séparateur entre les champs. */
@@ -586,6 +589,7 @@ tfoot .amount { color: var(--money); }
 .recap-row { cursor: pointer; transition: background .12s ease; }
 .recap-row td.month { font-weight: 700; text-transform: capitalize; }
 .recap-row:hover td { background: var(--row-hover); }
+.recap-row:hover td.amount { color: #C23012; }
 
 /* ============================ Pied ============================= */
 .app-footer {
