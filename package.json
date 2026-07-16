@@ -1,0 +1,9 @@
+{
+  "name": "eloitimer",
+  "version": "1.0.0",
+  "description": "PWA de pointage des heures — offline-first, outbox de synchronisation.",
+  "private": true,
+  "scripts": {
+    "test": "node tests/run.js"
+  }
+}

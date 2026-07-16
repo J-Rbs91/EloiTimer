@@ -7,7 +7,8 @@
  *   hover & accentuation       #026464
  *   erreurs & warnings         #C23012
  *   bordures & police          #04111E   (bordures fines, radius doux)
- * Police : Manrope. Aucune classe/id générée par app.js n'est renommée.
+ * Police : pile système (aucune ressource distante). Aucune classe/id
+ * générée par app.js n'est renommée.
  * ===================================================================== */
 
 :root {
@@ -65,8 +66,8 @@ html { scroll-behavior: smooth; }
 
 body {
   margin: 0;
-  font-family: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI",
-    system-ui, Roboto, Helvetica, Arial, sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, Helvetica, Arial, sans-serif;
   color: var(--ink);
   background: var(--bg);
   line-height: 1.45;
@@ -230,6 +231,50 @@ button.danger:hover { background: var(--danger); color: var(--on-accent); border
 .sync-status.ok { color: var(--accent); }
 .sync-status.sync { color: var(--muted); }
 .sync-status.off { color: var(--danger); }
+.sync-status.conflict { color: var(--warn, #C57A00); cursor: pointer; }
+
+/* ===================== Bandeau de mise à jour PWA ===================== */
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin: 8px 12px 0;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--accent) 14%, var(--elevated));
+  border: 1px solid var(--line);
+  font-size: .88rem;
+  font-weight: 600;
+}
+.update-banner span { flex: 1 1 auto; }
+.update-banner button {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  font-size: .85rem;
+}
+.update-banner button.ghost { padding: 6px 9px; }
+
+/* ===================== Liste de conflits ===================== */
+.conflict-list { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 12px; }
+.conflict-item {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  padding: 12px 14px;
+  background: var(--bg);
+}
+.conflict-item .conflict-where { font-weight: 700; margin-bottom: 8px; }
+.conflict-item .conflict-choices { display: grid; gap: 8px; }
+.conflict-item .conflict-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+}
+.conflict-item .conflict-choice .who { font-size: .78rem; font-weight: 600; opacity: .8; }
+.conflict-item .conflict-choice .val { font-variant-numeric: tabular-nums; font-weight: 800; }
 
 /* ============================ Modale ============================ */
 .modal {

@@ -35,20 +35,51 @@ tu n'as **aucun serveur** à installer ni à maintenir.
 
 - **Une feuille = une année** (12 onglets mensuels). Pour une autre année,
   duplique la feuille et déploie le même script dessus.
-- L'app reste la référence des calculs (arrondi à la demi-heure inclus) : elle
-  écrit aussi les colonnes *Heures* et *Montant* pour que la feuille affiche les
-  mêmes valeurs.
+- Le serveur **recalcule lui-même** les colonnes *Heures* et *Montant* (arrondi
+  à la demi-heure inclus, même logique que l'app) à chaque écriture, et à chaque
+  changement de taux. Tu n'as rien à faire.
 - **Taux horaire daté** : l'historique des taux est conservé dans un onglet
   **`Taux`** (créé automatiquement) — colonne A = date de début (`AAAA-MM-JJ`),
   colonne B = taux €/h. Chaque jour est payé au taux en vigueur à sa date ; la
-  cellule `B1` des onglets mensuels reflète le taux du jour courant. Si tu
-  recolles une ancienne version du script, l'onglet `Taux` est simplement ignoré.
+  cellule `B1` des onglets mensuels reflète le taux du jour courant.
 - Hors-ligne, l'app fonctionne sur son cache local et renvoie les modifications
   dès que la connexion revient.
-- En cas de modification simultanée, c'est la **dernière écriture qui gagne**
-  (au niveau de chaque jour).
+
+## Écritures par champ, idempotence et conflits (v2)
+
+Le script écrit désormais **un seul champ à la fois** (arrivée **ou** départ) :
+une modification de l'arrivée ne peut plus effacer le départ d'un autre
+téléphone.
+
+Deux onglets techniques sont créés automatiquement et **masqués** :
+
+| Onglet       | Rôle                                                              |
+|--------------|------------------------------------------------------------------|
+| `_SyncMeta`  | Une ligne par cellule synchronisée : `cellKey`, `révision`, `valeur`, dernier `opId`, `deviceId`, date serveur. Sert à détecter les conflits et à exposer la révision courante. |
+| `_SyncOps`   | Journal des identifiants d'opérations déjà appliqués (idempotence). Taille **bornée** à `OPS_CAP` (2000) : les plus anciens sont supprimés en FIFO. |
+
+- **Idempotence** : si une réponse réseau est perdue et que l'app rejoue la même
+  opération, le script la reconnaît (par `opId`, ou par égalité de valeur si le
+  journal a été purgé) et renvoie un succès **sans** ré-appliquer.
+- **Conflit** : si la révision de base envoyée par l'app est périmée **et** que
+  la valeur voulue diffère de la valeur serveur, le script renvoie un conflit
+  explicite (valeur et révision serveur incluses). Aucune valeur n'est écrasée
+  en silence — l'utilisateur tranche dans l'app.
+- **Verrou** : le script utilise `LockService` correctement — si le verrou n'est
+  **pas** acquis, il n'écrit rien et renvoie une erreur exploitable
+  (`busy: true`) ; l'app réessaie plus tard.
+
+> Ces onglets techniques ne doivent pas être supprimés ni renommés. Si tu les
+> effaces, ils seront recréés vides : les révisions repartent de zéro (sans
+> perte de données de planning). Tu peux les afficher (clic droit sur un onglet
+> → *Afficher les feuilles masquées*) pour inspection.
 
 ## Mettre à jour le script plus tard
 
-Recolle `Code.gs`, puis **Déployer → Gérer les déploiements → (crayon) →
-Version : Nouvelle version → Déployer**. L'URL `/exec` reste la même.
+Recolle **tout** le contenu de `Code.gs`, puis **Déployer → Gérer les
+déploiements → (crayon) → Version : Nouvelle version → Déployer**. L'URL `/exec`
+reste la même — rien à recoller côté app.
+
+> Compatibilité : l'ancienne action `write` (jour entier) reste acceptée le
+> temps qu'un appareil encore sur l'ancienne version se mette à jour. Une fois
+> tous les appareils à jour, seules les écritures par champ sont utilisées.

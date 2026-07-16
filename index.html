@@ -9,11 +9,8 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#00172C" />
 
-  <!-- Police Manrope -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" />
+  <!-- Polices : pile système uniquement (aucune ressource distante bloquante).
+       Le premier rendu ne dépend que des fichiers locaux et du cache. -->
   <link rel="icon" type="image/svg+xml" href="icons/favicon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png" />
   <link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16.png" />
@@ -38,6 +35,14 @@
 
     <div id="sync-status" class="sync-status hidden" aria-live="polite"></div>
   </header>
+
+  <!-- Bandeau discret de mise à jour PWA (caché par défaut). N'interrompt
+       aucune saisie : l'utilisateur choisit quand actualiser. -->
+  <div id="update-banner" class="update-banner hidden" role="status">
+    <span>Une nouvelle version est prête.</span>
+    <button id="update-reload" type="button">Actualiser</button>
+    <button id="update-dismiss" type="button" class="ghost" aria-label="Ignorer">✕</button>
+  </div>
 
   <!-- Réglages : année, taux horaire et actions (caché par défaut) -->
   <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
@@ -179,16 +184,66 @@
     </div>
   </div>
 
+  <!-- Résolution de conflit multi-appareils (cachée par défaut) -->
+  <div id="conflict-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="conflict-title">
+    <div class="modal-card">
+      <h2 id="conflict-title">Conflit de synchronisation</h2>
+      <p class="modal-intro">
+        Cette valeur a été modifiée sur un autre appareil pendant que tu la
+        modifiais ici. Choisis la version à conserver — rien n'est écrasé
+        automatiquement.
+      </p>
+      <ul id="conflict-list" class="conflict-list"></ul>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button id="conflict-close" type="button" class="ghost">Fermer</button>
+      </div>
+    </div>
+  </div>
+
   <nav class="tabs" id="tabs" aria-label="Onglets des mois"></nav>
 
   <main id="content"></main>
 
+  <!-- Fonctions pures partagées (chargées avant app.js) -->
+  <script src="sync-core.js"></script>
   <script src="app.js"></script>
   <script>
-    // Enregistrement du service worker (PWA / hors-ligne)
+    // Enregistrement du service worker (PWA / hors-ligne) avec prise en charge
+    // des mises à jour : on n'active la nouvelle version que sur demande.
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW non enregistré :', e));
+        navigator.serviceWorker.register('sw.js').then((reg) => {
+          function watch(worker) {
+            if (!worker) return;
+            worker.addEventListener('statechange', () => {
+              // Nouvelle version installée alors qu'une ancienne contrôle déjà
+              // la page : on propose une actualisation discrète.
+              if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+                const banner = document.getElementById('update-banner');
+                if (banner) banner.classList.remove('hidden');
+                const reload = document.getElementById('update-reload');
+                const dismiss = document.getElementById('update-dismiss');
+                if (reload) reload.onclick = () => { worker.postMessage({ type: 'SKIP_WAITING' }); };
+                if (dismiss) dismiss.onclick = () => banner.classList.add('hidden');
+              }
+            });
+          }
+          if (reg.waiting) watch(reg.waiting);
+          reg.addEventListener('updatefound', () => watch(reg.installing));
+        }).catch((e) => console.warn('SW non enregistré :', e));
+
+        // Quand une NOUVELLE version prend le contrôle, on recharge une fois.
+        // La toute première prise de contrôle (installation initiale) ne doit
+        // PAS recharger : sinon la première visite se recharge inutilement.
+        let hadController = !!navigator.serviceWorker.controller;
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!hadController) { hadController = true; return; }
+          if (refreshing) return;
+          refreshing = true;
+          window.location.reload();
+        });
       });
     }
   </script>

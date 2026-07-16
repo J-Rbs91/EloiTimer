@@ -17,6 +17,9 @@
 (() => {
   'use strict';
 
+  // Fonctions pures partagées (sync-core.js, chargé avant app.js).
+  const SC = window.EloiSync;
+
   const STORAGE_KEY = 'eloitimer.v1';
 
   const MONTHS = [
@@ -43,8 +46,8 @@
   // valable À PARTIR d'une date (`from`, "YYYY-MM-DD"). Le taux appliqué à
   // une journée est celui dont la date de début est la plus récente sans
   // dépasser la date de la journée. Le dernier taux s'applique indéfiniment.
-  const DEFAULT_RATE = 2.66;
-  const EPOCH = '2000-01-01'; // « depuis toujours » (taux initial / migration)
+  const DEFAULT_RATE = SC.DEFAULT_RATE;   // 2.66
+  const EPOCH = SC.EPOCH;                  // « depuis toujours » (taux initial / migration)
 
   // ---- État persistant ---------------------------------------------------
   /** @type {{rates:Array<{from:string,value:number}>, entries:Object<string,{arr?:string,dep?:string}>}} */
@@ -68,36 +71,14 @@
     return { rates: [{ from: EPOCH, value: DEFAULT_RATE }], entries: {} };
   }
 
-  /**
-   * Construit une liste de taux valide à partir des données stockées.
-   * Gère la migration de l'ancien format (un seul `rate` numérique).
-   */
-  function normalizeRates(rates, legacyRate) {
-    let list = Array.isArray(rates)
-      ? rates.filter((r) => r && typeof r.value === 'number' && r.value >= 0 && typeof r.from === 'string')
-             .map((r) => ({ from: r.from, value: r.value }))
-      : [];
-    if (!list.length) {
-      const value = typeof legacyRate === 'number' && legacyRate >= 0 ? legacyRate : DEFAULT_RATE;
-      list = [{ from: EPOCH, value }];
-    }
-    return sortRates(list);
-  }
-
-  function sortRates(list) {
-    return list.slice().sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
-  }
+  // Construction/normalisation de la liste des taux et sélection du taux daté :
+  // délégués au module pur partagé (voir sync-core.js).
+  const normalizeRates = (rates, legacyRate) => SC.normalizeRates(rates, legacyRate);
+  const sortRates = (list) => SC.sortRates(list);
 
   /** Taux applicable à une date "YYYY-MM-DD". */
   function rateForDate(dateStr) {
-    const sorted = sortRates(state.rates);
-    if (!sorted.length) return 0;
-    let value = sorted[0].value; // avant le tout premier taux : on prend le plus ancien
-    for (const item of sorted) {
-      if (item.from <= dateStr) value = item.value;
-      else break;
-    }
-    return value;
+    return SC.rateForDate(state.rates, dateStr);
   }
 
   /** Taux applicable à une journée (année/mois 0-11/jour). */
@@ -129,16 +110,36 @@
   //  Synchronisation avec la feuille Google (optionnelle, via Apps Script)
   //  Transport : JSONP (balise <script>) pour contourner le CORS.
   //  La feuille fait office de base partagée : « comme un Excel partagé ».
+  //
+  //  Modèle : « outbox » d'opérations UNITAIRES par champ. Chaque saisie est
+  //  d'abord enregistrée localement (state + outbox), puis envoyée. Une
+  //  opération n'est retirée qu'après confirmation explicite du serveur. Le
+  //  serveur gère l'idempotence (par identifiant d'op) et la détection de
+  //  conflit (par révision de cellule).
   // =======================================================================
   const SYNC_KEY = 'eloitimer.sync';
-  const PENDING_KEY = 'eloitimer.pending';
-  const POLL_MS = 45000; // rafraîchissement périodique depuis la feuille
+  const LEGACY_PENDING_KEY = 'eloitimer.pending'; // ancienne file (clés de jour)
+  const OUTBOX_KEY = 'eloitimer.outbox';
+  const DEVICE_KEY = 'eloitimer.device';
+  const REV_KEY = 'eloitimer.rev';                // { cellKey: révision serveur connue }
+  const SCHEMA_KEY = 'eloitimer.schema';
+  const SCHEMA_VERSION = 2;
+  const POLL_MS = 60000;                           // repli périodique
+  const MAX_BACKOFF_MS = 5 * 60 * 1000;            // plafond de temporisation
 
   let sync = loadSync();                 // { url, year }
-  const pending = new Map();             // clés de jours à (re)pousser
+  const deviceId = loadDeviceId();       // identifiant persistant de l'appareil
+  let outbox = loadOutbox();             // [op...] opérations en attente
+  let knownRevs = loadRevs();            // révisions serveur connues par cellule
   let jsonpSeq = 0;
   let flushTimer = null;
+  let retryTimer = null;
+  let retryDelay = 0;
   let pollTimer = null;
+  let isFlushing = false;                // verrou anti-concurrence de flushOutbox
+  let flushQueued = false;               // un appel est arrivé pendant un flush
+  let lastError = false;                 // dernière tentative distante en erreur
+  let justSavedUntil = 0;                // fenêtre d'affichage « Enregistré… »
 
   function loadSync() {
     try {
@@ -154,29 +155,81 @@
   const syncEnabled = () => !!sync.url;
   const syncedYear = () => sync.year || currentYear;
 
-  function loadPending() {
-    try {
-      JSON.parse(localStorage.getItem(PENDING_KEY) || '[]').forEach((k) => pending.set(k, true));
-    } catch (e) { /* ignore */ }
-  }
-  function savePending() {
-    try { localStorage.setItem(PENDING_KEY, JSON.stringify([...pending.keys()])); } catch (e) { /* quota */ }
+  function newId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'op-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
   }
 
-  /** Appel JSONP à l'application Web Apps Script. */
+  function loadDeviceId() {
+    let id = null;
+    try { id = localStorage.getItem(DEVICE_KEY); } catch (e) { /* ignore */ }
+    if (!id) {
+      id = (window.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : 'dev-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      try { localStorage.setItem(DEVICE_KEY, id); } catch (e) { /* ignore */ }
+    }
+    return id;
+  }
+
+  function loadOutbox() {
+    try {
+      const arr = JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]');
+      return Array.isArray(arr) ? arr.filter((o) => o && o.id && o.field) : [];
+    } catch (e) { return []; }
+  }
+  function saveOutbox() {
+    try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(outbox)); } catch (e) { /* quota */ }
+  }
+  function loadRevs() {
+    try {
+      const o = JSON.parse(localStorage.getItem(REV_KEY) || '{}');
+      return o && typeof o === 'object' ? o : {};
+    } catch (e) { return {}; }
+  }
+  function saveRevs() {
+    try { localStorage.setItem(REV_KEY, JSON.stringify(knownRevs)); } catch (e) { /* quota */ }
+  }
+
+  const outboxForYear = () => outbox.filter((o) => o.year === syncedYear());
+  const removeOp = (id) => { outbox = outbox.filter((o) => o.id !== id); saveOutbox(); };
+
+  // ---- Migration de l'ancien stockage (idempotente) ----------------------
+  function runMigration() {
+    let schema = 0;
+    try { schema = parseInt(localStorage.getItem(SCHEMA_KEY) || '0', 10) || 0; } catch (e) { /* ignore */ }
+    if (schema >= SCHEMA_VERSION) return;
+
+    let legacy = [];
+    try { legacy = JSON.parse(localStorage.getItem(LEGACY_PENDING_KEY) || '[]'); } catch (e) { legacy = []; }
+    if (Array.isArray(legacy) && legacy.length) {
+      const base = Date.now();
+      const newOps = SC.migratePending(
+        legacy, state.entries, sync.year || null, outbox,
+        (i) => ({ id: newId(), deviceId, createdAt: new Date(base + i).toISOString() })
+      );
+      if (newOps.length) { outbox = outbox.concat(newOps); saveOutbox(); }
+    }
+    // On ne retire l'ancienne file qu'APRÈS avoir écrit l'outbox migrée.
+    try { localStorage.removeItem(LEGACY_PENDING_KEY); } catch (e) { /* ignore */ }
+    try { localStorage.setItem(SCHEMA_KEY, String(SCHEMA_VERSION)); } catch (e) { /* ignore */ }
+  }
+
+  /** Appel JSONP à l'application Web Apps Script (avec anti-cache). */
   function jsonp(params, timeoutMs = 15000) {
     return new Promise((resolve, reject) => {
       if (!sync.url) return reject(new Error('URL non configurée'));
       const cb = '__eloi_cb_' + (++jsonpSeq);
-      const qs = Object.keys(params)
-        .map((k) => encodeURIComponent(k) + '=' + encodeURIComponent(params[k]))
+      const p = Object.assign({}, params, { _: Date.now() }); // anti-cache
+      const qs = Object.keys(p)
+        .map((k) => encodeURIComponent(k) + '=' + encodeURIComponent(p[k]))
         .join('&');
       const sep = sync.url.indexOf('?') === -1 ? '?' : '&';
       const script = document.createElement('script');
       const timer = setTimeout(() => { cleanup(); reject(new Error('délai dépassé')); }, timeoutMs);
       function cleanup() {
         clearTimeout(timer);
-        delete window[cb];
+        try { delete window[cb]; } catch (e) { window[cb] = undefined; }
         if (script.parentNode) script.parentNode.removeChild(script);
       }
       window[cb] = (data) => { cleanup(); resolve(data); };
@@ -186,71 +239,128 @@
     });
   }
 
-  /** Marque un jour comme à pousser puis planifie un envoi groupé. */
-  function queueCloudDay(year, key) {
+  // ---- Enfilement d'une opération (déclenché à chaque saisie) ------------
+  function enqueueOp(year, month0, day, field, value) {
     if (!syncEnabled() || year !== syncedYear()) return;
-    pending.set(key, true);
-    savePending();
-    scheduleFlush();
+    // Une op non confirmée déjà présente pour cette cellule est remplacée par
+    // la dernière valeur voulue ; un éventuel conflit sur cette cellule est
+    // levé par cette nouvelle saisie explicite.
+    outbox = outbox.filter((o) => !(o.year === year && o.month === month0 + 1 && o.day === day && o.field === field));
+    const ck = SC.cellKey(year, month0 + 1, day, field);
+    outbox.push(SC.makeOp(year, month0 + 1, day, field, value || '', knownRevs[ck] | 0, {
+      id: newId(), deviceId, createdAt: new Date().toISOString(),
+    }));
+    saveOutbox();
+    justSavedUntil = Date.now() + 1600;
+    renderSyncStatus();
+    scheduleFlush(300);
   }
 
-  function scheduleFlush() {
+  function scheduleFlush(delay) {
     if (!syncEnabled()) return;
-    setSyncStatus('sync', 'Enregistrement…');
     clearTimeout(flushTimer);
-    flushTimer = setTimeout(async () => {
-      await flushPending();
-      setSyncStatus(pending.size ? 'off' : 'ok', pending.size ? 'En attente de réseau…' : 'Synchronisé');
-    }, 800);
+    flushTimer = setTimeout(() => { flushOutbox(); }, delay || 0);
   }
 
-  /** Pousse tous les jours en attente (s'arrête au premier échec réseau). */
-  async function flushPending() {
-    if (!syncEnabled()) return;
-    for (const key of [...pending.keys()]) {
-      const ok = await pushDay(key);
-      if (ok) { pending.delete(key); savePending(); }
-      else break;
-    }
+  function scheduleRetry() {
+    retryDelay = retryDelay ? Math.min(retryDelay * 2, MAX_BACKOFF_MS) : 2000;
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => { flushOutbox(); }, retryDelay);
   }
 
-  /** Écrit un jour (arrivée/départ/heures/montant/taux) dans la feuille. */
-  async function pushDay(key) {
-    const [y, mm, dd] = key.split('-').map(Number);
-    const month = mm - 1;
-    const entry = state.entries[key] || {};
-    const hours = computeHours(entry.arr, entry.dep);
-    const dow = new Date(y, month, dd).getDay();
+  function writeParams(op) {
+    return {
+      action: 'writeField',
+      id: op.id, deviceId: op.deviceId,
+      year: op.year, month: op.month, day: op.day,
+      field: op.field, value: op.value,
+      baseRevision: op.baseRevision,
+    };
+  }
+
+  /** Fonction centrale : vide l'outbox. Un seul flux à la fois (verrou). */
+  async function flushOutbox() {
+    if (!syncEnabled()) { renderSyncStatus(); return; }
+    if (isFlushing) { flushQueued = true; return; }
+    const ops = SC.sortOutbox(outbox).filter((o) => o.year === syncedYear() && !o.conflict);
+    if (!ops.length) { renderSyncStatus(); return; }
+
+    isFlushing = true;
+    renderSyncStatus();
+    let networkError = false;
     try {
-      const data = await jsonp({
-        action: 'write', year: y, month: mm, day: dd,
-        arr: entry.arr || '', dep: entry.dep || '',
-        hours: hours ? hours.toFixed(2) : '',
-        amount: hours ? (hours * rateForDay(y, month, dd)).toFixed(2) : '',
-        jour: WEEKDAYS[dow],
-      });
-      return !!(data && data.ok);
-    } catch (e) {
-      return false;
+      for (const op of ops) {
+        if (!outbox.some((o) => o.id === op.id && !o.conflict)) continue; // remplacée entre-temps
+        let res;
+        try {
+          res = await jsonp(writeParams(op));
+        } catch (e) {
+          networkError = true; // échec/timeout réseau : on garde toutes les ops
+          break;
+        }
+        if (res && res.ok) {
+          const ck = SC.cellKey(op.year, op.month, op.day, op.field);
+          if (typeof res.revision === 'number') { knownRevs[ck] = res.revision; saveRevs(); }
+          removeOp(op.id);          // confirmé (appliqué ou idempotent) : on retire
+          lastError = false;
+        } else if (res && res.conflict) {
+          markConflict(op, res);    // conservé, résolution utilisateur requise
+        } else {
+          lastError = true;         // réponse invalide : on garde l'op
+          networkError = true;
+          break;
+        }
+      }
+    } finally {
+      isFlushing = false;
     }
+
+    if (networkError) scheduleRetry();
+    else { retryDelay = 0; lastError = false; }
+
+    renderSyncStatus();
+    if (isConflictModalOpen()) renderConflictList();
+    if (flushQueued) { flushQueued = false; scheduleFlush(0); }
   }
 
-  /** Récupère les données de la feuille et les applique à l'année synchronisée. */
+  function markConflict(op, res) {
+    const ck = SC.cellKey(op.year, op.month, op.day, op.field);
+    if (typeof res.serverRevision === 'number') { knownRevs[ck] = res.serverRevision; saveRevs(); }
+    outbox = outbox.map((o) => (o.id === op.id ? Object.assign({}, o, {
+      conflict: {
+        serverValue: res.serverValue || '',
+        serverRevision: res.serverRevision || 0,
+        serverDevice: res.serverDevice || '',
+        serverAt: res.serverAt || '',
+      },
+    }) : o));
+    saveOutbox();
+  }
+
+  /**
+   * Récupère les données distantes et les FUSIONNE avec l'état local sans
+   * jamais écraser une opération locale en attente (voir SC.mergeRemote).
+   */
   async function cloudPull() {
     if (!syncEnabled()) return;
-    await flushPending(); // n'écrase pas des saisies locales non encore envoyées
-    setSyncStatus('sync', 'Synchronisation…');
+    renderSyncStatus('sync', 'Synchronisation…');
+    let data;
     try {
-      const data = await jsonp({ action: 'read' });
-      if (!data || !data.ok) throw new Error((data && data.error) || 'réponse invalide');
-      applyCloudData(data);
-      setSyncStatus(pending.size ? 'off' : 'ok', pending.size ? 'En attente de réseau…' : 'Synchronisé');
+      data = await jsonp({ action: 'read' });
     } catch (e) {
-      setSyncStatus('off', 'Hors-ligne (cache local)');
+      // Simple absence de réseau : on reste sur le cache local, sans erreur dure.
+      renderSyncStatus();
+      return;
     }
+    if (!data || !data.ok) { lastError = true; renderSyncStatus(); return; }
+    applyRemote(data);
+    lastError = false;
+    renderSyncStatus();
+    // La fusion faite, on tente d'envoyer les opérations encore en attente.
+    flushOutbox();
   }
 
-  function applyCloudData(data) {
+  function applyRemote(data) {
     const year = syncedYear();
     // Historique des taux (nouveau format) ; repli sur l'ancien taux unique.
     if (Array.isArray(data.rates) && data.rates.length) {
@@ -258,38 +368,30 @@
     } else if (typeof data.rate === 'number' && data.rate > 0) {
       state.rates = normalizeRates(null, data.rate);
     }
-    renderRatesUi();
-    // Remplace les entrées de l'année synchronisée par celles de la feuille
-    const prefix = `${year}-`;
-    Object.keys(state.entries).forEach((k) => { if (k.startsWith(prefix)) delete state.entries[k]; });
-    const months = data.months || {};
-    Object.keys(months).forEach((mStr) => {
-      const month = parseInt(mStr, 10) - 1;
-      const days = months[mStr] || {};
-      Object.keys(days).forEach((dStr) => {
-        const day = parseInt(dStr, 10);
-        const { arr, dep } = days[dStr] || {};
-        const entry = {};
-        if (arr) entry.arr = arr;
-        if (dep) entry.dep = dep;
-        if (entry.arr || entry.dep) state.entries[dayKey(year, month, day)] = entry;
+    // Révisions serveur connues (ne jamais rabaisser une révision plus récente).
+    if (data.revs && typeof data.revs === 'object') {
+      Object.keys(data.revs).forEach((k) => {
+        const r = data.revs[k] | 0;
+        if (!(k in knownRevs) || r > knownRevs[k]) knownRevs[k] = r;
       });
-    });
+      saveRevs();
+    }
+    // Fusion NON destructive : distant + protection des cellules en attente.
+    state.entries = SC.mergeRemote(state.entries, data.months || {}, outbox, year);
     save();
+    renderRatesUi();
     renderContent();
   }
 
-  /** Propage l'historique des taux à la feuille + recalcule les montants. */
+  /** Propage l'historique des taux ; le serveur recalcule lui-même les montants. */
   function pushRates() {
     if (!syncEnabled()) return;
-    jsonp({ action: 'setrates', rates: JSON.stringify(state.rates) }).catch(() => {});
-    // Les montants déjà écrits dépendent du taux : on re-pousse l'année synchro.
-    const prefix = `${syncedYear()}-`;
-    Object.keys(state.entries).forEach((k) => { if (k.startsWith(prefix)) pending.set(k, true); });
-    savePending();
-    scheduleFlush();
+    jsonp({ action: 'setrates', rates: JSON.stringify(state.rates) })
+      .then(() => cloudPull())
+      .catch(() => {});
   }
 
+  /** Statut forcé (message transitoire) — l'état calculé reprend ensuite la main. */
   function setSyncStatus(kind, text) {
     const elStatus = document.getElementById('sync-status');
     if (!elStatus) return;
@@ -297,6 +399,26 @@
     elStatus.classList.remove('hidden');
     elStatus.className = 'sync-status ' + kind;
     elStatus.textContent = text;
+    elStatus.onclick = null;
+  }
+
+  /** Statut CALCULÉ à partir de l'outbox, de l'état réseau et des conflits. */
+  function renderSyncStatus(forceKind, forceText) {
+    const elStatus = document.getElementById('sync-status');
+    if (!elStatus) return;
+    if (!syncEnabled()) { elStatus.classList.add('hidden'); return; }
+    if (forceKind) { setSyncStatus(forceKind, forceText); return; }
+    elStatus.classList.remove('hidden');
+    const st = SC.computeSyncStatus({
+      outbox: outboxForYear(),
+      isFlushing,
+      online: (typeof navigator.onLine === 'boolean') ? navigator.onLine : true,
+      justSaved: Date.now() < justSavedUntil,
+      error: lastError,
+    });
+    elStatus.className = 'sync-status ' + st.kind;
+    elStatus.textContent = st.text;
+    elStatus.onclick = st.kind === 'conflict' ? openConflictModal : null;
   }
 
   function startPolling() {
@@ -306,9 +428,103 @@
       // Ne pas rafraîchir l'affichage pendant une saisie en cours
       const active = document.activeElement;
       if (active && active.classList && active.classList.contains('cell-input')) return;
-      if (pending.size) flushPending();
+      if (outboxForYear().some((o) => !o.conflict)) flushOutbox();
       else cloudPull();
     }, POLL_MS);
+  }
+
+  /** Déclencheurs de synchronisation (retour réseau, premier plan, focus). */
+  function setupSyncTriggers() {
+    window.addEventListener('online', () => { retryDelay = 0; renderSyncStatus(); scheduleFlush(0); });
+    window.addEventListener('offline', () => renderSyncStatus());
+    window.addEventListener('focus', () => { if (syncEnabled()) scheduleFlush(0); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible' || !syncEnabled()) return;
+      const active = document.activeElement;
+      const editing = active && active.classList && active.classList.contains('cell-input');
+      if (outboxForYear().some((o) => !o.conflict)) scheduleFlush(0);
+      else if (!editing) cloudPull();
+    });
+  }
+
+  // ---- Résolution de conflit multi-appareils ----------------------------
+  const isConflictModalOpen = () =>
+    !document.getElementById('conflict-modal').classList.contains('hidden');
+
+  function openConflictModal() {
+    if (!outbox.some((o) => o.conflict)) return;
+    renderConflictList();
+    document.getElementById('conflict-modal').classList.remove('hidden');
+  }
+  function closeConflictModal() {
+    document.getElementById('conflict-modal').classList.add('hidden');
+  }
+
+  function conflictChoice(who, val, onClick) {
+    const b = el('button', 'conflict-choice');
+    b.type = 'button';
+    const w = el('span', 'who'); w.textContent = who;
+    const v = el('span', 'val'); v.textContent = val || '(vide)';
+    b.appendChild(w); b.appendChild(v);
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  function renderConflictList() {
+    const list = document.getElementById('conflict-list');
+    if (!list) return;
+    list.innerHTML = '';
+    const conflicts = outbox.filter((o) => o.conflict);
+    if (!conflicts.length) { closeConflictModal(); return; }
+    conflicts.forEach((op) => {
+      const li = el('li', 'conflict-item');
+      const where = el('div', 'conflict-where');
+      const label = op.field === 'dep' ? 'Départ' : 'Arrivée';
+      where.textContent = `${pad2(op.day)}/${pad2(op.month)}/${op.year} · ${label}`;
+      li.appendChild(where);
+      const choices = el('div', 'conflict-choices');
+      choices.appendChild(conflictChoice('Conserver ma valeur', op.value, () => resolveConflict(op, 'mine')));
+      choices.appendChild(conflictChoice('Conserver la valeur synchronisée', op.conflict.serverValue, () => resolveConflict(op, 'server')));
+      li.appendChild(choices);
+      list.appendChild(li);
+    });
+  }
+
+  function resolveConflict(op, keep) {
+    const ck = SC.cellKey(op.year, op.month, op.day, op.field);
+    const serverRev = op.conflict ? (op.conflict.serverRevision | 0) : (knownRevs[ck] | 0);
+    if (keep === 'server') {
+      // Adopter la valeur distante localement, puis retirer l'opération.
+      const k = dayKey(op.year, op.month - 1, op.day);
+      const entry = Object.assign({}, state.entries[k]);
+      const v = op.conflict ? op.conflict.serverValue : '';
+      if (v) entry[op.field] = v; else delete entry[op.field];
+      if (entry.arr || entry.dep) state.entries[k] = entry; else delete state.entries[k];
+      knownRevs[ck] = serverRev;
+      save(); saveRevs();
+      removeOp(op.id);
+    } else {
+      // Garder ma valeur : NOUVELLE opération basée sur la révision serveur actuelle.
+      knownRevs[ck] = serverRev;
+      outbox = outbox.map((o) => (o.id === op.id
+        ? SC.makeOp(o.year, o.month, o.day, o.field, o.value, serverRev,
+            { id: newId(), deviceId, createdAt: new Date().toISOString() })
+        : o));
+      saveRevs(); saveOutbox();
+    }
+    renderContent();
+    renderConflictList();
+    renderSyncStatus();
+    scheduleFlush(0);
+  }
+
+  function setupConflictModal() {
+    const modal = document.getElementById('conflict-modal');
+    document.getElementById('conflict-close').addEventListener('click', closeConflictModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeConflictModal(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeConflictModal();
+    });
   }
 
   // ---- Clés & calculs ----------------------------------------------------
@@ -325,52 +541,16 @@
     else delete entry[field];
     if (entry.arr || entry.dep) state.entries[key] = entry;
     else delete state.entries[key];
-    save();
-    queueCloudDay(year, key); // pousse vers la feuille Google si la synchro est active
+    save();                                  // 1) enregistré localement d'abord
+    enqueueOp(year, month, day, field, value); // 2) puis mis dans l'outbox (envoi)
   }
 
-  /** Convertit "HH:MM" en heures décimales, ou null si invalide. */
-  function timeToHours(value) {
-    if (!value) return null;
-    const m = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
-    if (!m) return null;
-    const h = Number(m[1]);
-    const min = Number(m[2]);
-    if (h > 23 || min > 59) return null;
-    return h + min / 60;
-  }
-
-  /**
-   * Arrondi à la demi-heure, en faveur d'Eloi :
-   *  - arrivée arrondie au PLANCHER  (9h01 / 9h29  -> 9h00)
-   *  - départ  arrondi  au PLAFOND   (18h01 / 18h29 -> 18h30)
-   * Renvoie les heures décimales arrondies, ou null si saisie incomplète.
-   */
-  function roundedTimes(arr, dep) {
-    const a = timeToHours(arr);
-    const d = timeToHours(dep);
-    if (a === null || d === null) return null;
-    return {
-      arr: Math.floor(a * 2) / 2, // plancher à la demi-heure
-      dep: Math.ceil(d * 2) / 2,  // plafond à la demi-heure
-    };
-  }
-
-  /** Heures travaillées (après arrondi), gère le passage de minuit. */
-  function computeHours(arr, dep) {
-    const r = roundedTimes(arr, dep);
-    if (!r) return 0;
-    let diff = r.dep - r.arr;
-    if (diff < 0) diff += 24; // service de nuit
-    return diff;
-  }
-
-  /** Convertit des heures décimales en "HH:MM" (pour l'info-bulle). */
-  function hoursToTime(h) {
-    const hh = Math.floor(h) % 24;
-    const mm = Math.round((h - Math.floor(h)) * 60);
-    return `${pad2(hh)}:${pad2(mm)}`;
-  }
+  // Conversion / arrondi / calcul des heures : délégués au module pur partagé
+  // (sync-core.js). Le serveur (Code.gs) en tient une copie équivalente.
+  const timeToHours = (value) => SC.timeToHours(value);
+  const roundedTimes = (arr, dep) => SC.roundedTimes(arr, dep);
+  const computeHours = (arr, dep) => SC.computeHours(arr, dep);
+  const hoursToTime = (h) => SC.hoursToTime(h);
 
   /** Texte d'info-bulle expliquant l'arrondi appliqué à une ligne. */
   function roundInfo(arr, dep) {
@@ -1129,7 +1309,7 @@
   }
 
   // ---- Démarrage ---------------------------------------------------------
-  loadPending();
+  runMigration(); // migre l'ancienne file `eloitimer.pending` -> outbox
   if (syncEnabled() && sync.year) currentYear = sync.year;
 
   initControls();
@@ -1138,12 +1318,18 @@
   setupConfirmModal();
   setupRatesModal();
   setupTimeModal();
+  setupConflictModal();
   renderTabs();
   renderContent();
   focusTodayInput();
+  setupSyncTriggers();
 
   if (syncEnabled()) {
-    setSyncStatus('sync', 'Synchronisation…');
+    renderSyncStatus();
+    // 1) on affiche immédiatement l'état local, 2) on tente d'envoyer l'outbox,
+    // 3) on fusionne les données distantes (non destructif), puis on démarre le
+    // repli périodique. L'UI n'attend jamais le réseau pour s'afficher.
+    flushOutbox();
     cloudPull().then(() => { focusTodayInput(); startPolling(); });
   }
 })();
