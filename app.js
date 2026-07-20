@@ -139,6 +139,7 @@
   let isFlushing = false;                // verrou anti-concurrence de flushOutbox
   let flushQueued = false;               // un appel est arrivé pendant un flush
   let lastError = false;                 // dernière tentative distante en erreur
+  let lastServerError = '';              // rejet DUR du serveur (op refusée, non transitoire)
   let justSavedUntil = 0;                // fenêtre d'affichage « Enregistré… »
 
   function loadSync() {
@@ -303,10 +304,17 @@
           if (typeof res.revision === 'number') { knownRevs[ck] = res.revision; saveRevs(); }
           removeOp(op.id);          // confirmé (appliqué ou idempotent) : on retire
           lastError = false;
+          lastServerError = '';     // une écriture a réussi : plus de rejet serveur
         } else if (res && res.conflict) {
           markConflict(op, res);    // conservé, résolution utilisateur requise
+        } else if (res && res.busy) {
+          networkError = true;      // verrou serveur momentané : simple réessai
+          break;
         } else {
-          lastError = true;         // réponse invalide : on garde l'op
+          // Rejet DUR (réponse invalide, ou action refusée par un Apps Script
+          // pas à jour). On garde l'op mais on remonte l'erreur pour l'afficher.
+          lastError = true;
+          lastServerError = (res && res.error) ? String(res.error) : 'réponse invalide';
           networkError = true;
           break;
         }
@@ -316,7 +324,7 @@
     }
 
     if (networkError) scheduleRetry();
-    else { retryDelay = 0; lastError = false; }
+    else { retryDelay = 0; lastError = false; lastServerError = ''; }
 
     renderSyncStatus();
     if (isConflictModalOpen()) renderConflictList();
@@ -415,6 +423,7 @@
       online: (typeof navigator.onLine === 'boolean') ? navigator.onLine : true,
       justSaved: Date.now() < justSavedUntil,
       error: lastError,
+      serverError: lastServerError,
     });
     elStatus.className = 'sync-status ' + st.kind;
     elStatus.textContent = st.text;

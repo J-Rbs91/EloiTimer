@@ -98,6 +98,9 @@ section('computeSyncStatus — jamais « Synchronisé » si outbox non vide / co
   ok(SC.computeSyncStatus({ outbox: one, isFlushing: true, online: true }).text === 'Synchronisation…', 'flush -> Synchronisation…');
   var conf = [Object.assign(SC.makeOp(2026, 7, 16, 'arr', '08:00', 0, nextCtx()), { conflict: { serverValue: '09:00' } })];
   ok(SC.computeSyncStatus({ outbox: conf, isFlushing: false, online: true }).kind === 'conflict', 'conflit -> conflict');
+  // Rejet DUR du serveur (ex. Apps Script pas à jour) : ne pas masquer par « en attente ».
+  var stuck = SC.computeSyncStatus({ outbox: one, isFlushing: false, online: true, serverError: 'action inconnue : writeField' });
+  ok(stuck.kind === 'off' && stuck.text.indexOf('en attente') < 0, 'rejet serveur -> statut d\'erreur, pas « en attente »');
 })();
 
 /* ===================== Scénarios SERVEUR (miroir Code.gs) ===================== */

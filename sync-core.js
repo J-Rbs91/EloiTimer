@@ -265,6 +265,12 @@
         return { kind: 'off', text: 'Hors ligne · ' + modLabel(pendingCount) + ' en attente' };
       }
       if (opts.justSaved) return { kind: 'sync', text: 'Enregistré sur ce téléphone' };
+      // Le serveur REJETTE l'écriture (ex. script Apps Script pas à jour) : la
+      // file ne se videra jamais toute seule. On le dit clairement au lieu de
+      // laisser un « en attente » trompeur tourner en boucle.
+      if (opts.serverError) {
+        return { kind: 'off', text: 'Synchro bloquée · script à mettre à jour ?' };
+      }
       return { kind: 'sync', text: modLabel(pendingCount) + ' en attente' };
     }
     if (opts.online === false) return { kind: 'off', text: 'Hors ligne' };
