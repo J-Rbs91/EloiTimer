@@ -17,8 +17,33 @@
 (() => {
   'use strict';
 
+  // Défense en profondeur : si le module partagé n'a pas pu être chargé (cache
+  // incohérent servant index.html + app.js mais PAS sync-core.js), l'app ne
+  // peut pas fonctionner. Plutôt que d'échouer en silence et de rester bloquée
+  // sur l'écran de démarrage, on RÉPARE : purge des caches, désinscription du
+  // service worker, puis un seul rechargement (garde anti-boucle en sessionStorage).
+  if (!window.EloiSync) {
+    try {
+      if (!sessionStorage.getItem('eloi-selfheal')) {
+        sessionStorage.setItem('eloi-selfheal', '1');
+        const clearCaches = (typeof caches !== 'undefined' && caches.keys)
+          ? caches.keys().then((ks) => Promise.all(ks.map((k) => caches.delete(k)))).catch(() => {})
+          : Promise.resolve();
+        clearCaches.then(() => {
+          if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+            return navigator.serviceWorker.getRegistrations()
+              .then((rs) => Promise.all(rs.map((r) => r.unregister()))).catch(() => {});
+          }
+        }).finally(() => location.reload());
+      }
+    } catch (e) { /* dernier recours : abandon propre */ }
+    return; // on n'exécute pas le reste avec un module manquant
+  }
+
   // Fonctions pures partagées (sync-core.js, chargé avant app.js).
   const SC = window.EloiSync;
+  // Chargement OK : on lève la garde pour qu'une panne future puisse re-réparer.
+  try { sessionStorage.removeItem('eloi-selfheal'); } catch (e) { /* ignore */ }
 
   const STORAGE_KEY = 'eloitimer.v1';
 
