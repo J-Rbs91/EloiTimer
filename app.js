@@ -161,8 +161,11 @@
   let retryTimer = null;
   let retryDelay = 0;
   let pollTimer = null;
-  let isFlushing = false;                // verrou anti-concurrence de flushOutbox
-  let flushQueued = false;               // un appel est arrivé pendant un flush
+  let isFlushing = false;                // écriture distante en cours
+  let flushPromise = null;               // partage le flush courant entre les appelants
+  let isSyncing = false;                 // cycle complet push -> pull en cours
+  let syncCyclePromise = null;           // sérialise les cycles de synchronisation
+  let syncCycleQueued = false;           // rejoue un cycle si un événement arrive pendant le précédent
   let lastError = false;                 // dernière tentative distante en erreur
   let justSavedUntil = 0;                // fenêtre d'affichage « Enregistré… »
 
@@ -278,19 +281,20 @@
     saveOutbox();
     justSavedUntil = Date.now() + 1600;
     renderSyncStatus();
-    scheduleFlush(300);
+    scheduleSync(300);
   }
 
-  function scheduleFlush(delay) {
+  /** Planifie un cycle COMPLET (push de l'outbox, puis pull distant). */
+  function scheduleSync(delay) {
     if (!syncEnabled()) return;
     clearTimeout(flushTimer);
-    flushTimer = setTimeout(() => { flushOutbox(); }, delay || 0);
+    flushTimer = setTimeout(() => { syncNow(); }, delay || 0);
   }
 
   function scheduleRetry() {
     retryDelay = retryDelay ? Math.min(retryDelay * 2, MAX_BACKOFF_MS) : 2000;
     clearTimeout(retryTimer);
-    retryTimer = setTimeout(() => { flushOutbox(); }, retryDelay);
+    retryTimer = setTimeout(() => { syncNow(); }, retryDelay);
   }
 
   function writeParams(op) {
@@ -303,49 +307,58 @@
     };
   }
 
-  /** Fonction centrale : vide l'outbox. Un seul flux à la fois (verrou). */
+  /** Fonction centrale : vide l'outbox. Les appels concurrents attendent le même flush. */
   async function flushOutbox() {
-    if (!syncEnabled()) { renderSyncStatus(); return; }
-    if (isFlushing) { flushQueued = true; return; }
-    const ops = SC.sortOutbox(outbox).filter((o) => o.year === syncedYear() && !o.conflict);
-    if (!ops.length) { renderSyncStatus(); return; }
+    if (!syncEnabled()) { renderSyncStatus(); return false; }
+    if (flushPromise) return flushPromise;
 
-    isFlushing = true;
-    renderSyncStatus();
-    let networkError = false;
-    try {
-      for (const op of ops) {
-        if (!outbox.some((o) => o.id === op.id && !o.conflict)) continue; // remplacée entre-temps
-        let res;
-        try {
-          res = await jsonp(writeParams(op));
-        } catch (e) {
-          networkError = true; // échec/timeout réseau : on garde toutes les ops
-          break;
+    flushPromise = (async () => {
+      const ops = SC.sortOutbox(outbox).filter((o) => o.year === syncedYear() && !o.conflict);
+      if (!ops.length) return true;
+
+      isFlushing = true;
+      renderSyncStatus();
+      let networkError = false;
+      try {
+        for (const op of ops) {
+          if (!outbox.some((o) => o.id === op.id && !o.conflict)) continue;
+          let res;
+          try {
+            res = await jsonp(writeParams(op));
+          } catch (e) {
+            lastError = true;
+            networkError = true;
+            break;
+          }
+          if (res && res.ok) {
+            const ck = SC.cellKey(op.year, op.month, op.day, op.field);
+            if (typeof res.revision === 'number') { knownRevs[ck] = res.revision; saveRevs(); }
+            removeOp(op.id);
+          } else if (res && res.conflict) {
+            markConflict(op, res);
+          } else {
+            lastError = true;
+            networkError = true;
+            break;
+          }
         }
-        if (res && res.ok) {
-          const ck = SC.cellKey(op.year, op.month, op.day, op.field);
-          if (typeof res.revision === 'number') { knownRevs[ck] = res.revision; saveRevs(); }
-          removeOp(op.id);          // confirmé (appliqué ou idempotent) : on retire
-          lastError = false;
-        } else if (res && res.conflict) {
-          markConflict(op, res);    // conservé, résolution utilisateur requise
-        } else {
-          lastError = true;         // réponse invalide : on garde l'op
-          networkError = true;
-          break;
-        }
+      } finally {
+        isFlushing = false;
       }
+
+      if (networkError) scheduleRetry();
+      else retryDelay = 0;
+
+      renderSyncStatus();
+      if (isConflictModalOpen()) renderConflictList();
+      return !networkError;
+    })();
+
+    try {
+      return await flushPromise;
     } finally {
-      isFlushing = false;
+      flushPromise = null;
     }
-
-    if (networkError) scheduleRetry();
-    else { retryDelay = 0; lastError = false; }
-
-    renderSyncStatus();
-    if (isConflictModalOpen()) renderConflictList();
-    if (flushQueued) { flushQueued = false; scheduleFlush(0); }
   }
 
   function markConflict(op, res) {
@@ -367,22 +380,66 @@
    * jamais écraser une opération locale en attente (voir SC.mergeRemote).
    */
   async function cloudPull() {
-    if (!syncEnabled()) return;
+    if (!syncEnabled()) return false;
     renderSyncStatus('sync', 'Synchronisation…');
     let data;
     try {
       data = await jsonp({ action: 'read' });
     } catch (e) {
-      // Simple absence de réseau : on reste sur le cache local, sans erreur dure.
+      // Le cache local reste utilisable, mais on ne doit surtout pas afficher
+      // « Synchronisé » si la lecture distante n'a pas abouti.
+      lastError = true;
       renderSyncStatus();
-      return;
+      return false;
     }
-    if (!data || !data.ok) { lastError = true; renderSyncStatus(); return; }
+    if (!data || !data.ok) { lastError = true; renderSyncStatus(); return false; }
     applyRemote(data);
-    lastError = false;
     renderSyncStatus();
-    // La fusion faite, on tente d'envoyer les opérations encore en attente.
-    flushOutbox();
+    return true;
+  }
+
+  /**
+   * Cycle unique de synchronisation :
+   *   1) pousser et CONFIRMER l'outbox ;
+   *   2) seulement ensuite lire/fusionner la feuille distante.
+   * Tous les déclencheurs passent ici afin d'éviter les courses push/pull.
+   */
+  async function syncNow() {
+    if (!syncEnabled()) { renderSyncStatus(); return false; }
+    if (syncCyclePromise) {
+      syncCycleQueued = true;
+      return syncCyclePromise;
+    }
+
+    isSyncing = true;
+    renderSyncStatus();
+    syncCyclePromise = (async () => {
+      const flushOk = await flushOutbox();
+      if (!flushOk) {
+        lastError = true;
+        return false;
+      }
+      const pullOk = await cloudPull();
+      lastError = !pullOk;
+      if (!pullOk) scheduleRetry();
+      else {
+        clearTimeout(retryTimer);
+        retryDelay = 0;
+      }
+      return pullOk;
+    })();
+
+    try {
+      return await syncCyclePromise;
+    } finally {
+      syncCyclePromise = null;
+      isSyncing = false;
+      renderSyncStatus();
+      if (syncCycleQueued) {
+        syncCycleQueued = false;
+        scheduleSync(0);
+      }
+    }
   }
 
   function applyRemote(data) {
@@ -409,11 +466,16 @@
   }
 
   /** Propage l'historique des taux ; le serveur recalcule lui-même les montants. */
-  function pushRates() {
+  async function pushRates() {
     if (!syncEnabled()) return;
-    jsonp({ action: 'setrates', rates: JSON.stringify(state.rates) })
-      .then(() => cloudPull())
-      .catch(() => {});
+    try {
+      const res = await jsonp({ action: 'setrates', rates: JSON.stringify(state.rates) });
+      if (!res || !res.ok) throw new Error('échec setrates');
+      await syncNow();
+    } catch (e) {
+      lastError = true;
+      renderSyncStatus();
+    }
   }
 
   /** Statut forcé (message transitoire) — l'état calculé reprend ensuite la main. */
@@ -436,7 +498,7 @@
     elStatus.classList.remove('hidden');
     const st = SC.computeSyncStatus({
       outbox: outboxForYear(),
-      isFlushing,
+      isFlushing: isFlushing || isSyncing,
       online: (typeof navigator.onLine === 'boolean') ? navigator.onLine : true,
       justSaved: Date.now() < justSavedUntil,
       error: lastError,
@@ -446,29 +508,35 @@
     elStatus.onclick = st.kind === 'conflict' ? openConflictModal : null;
   }
 
+  function isEditingTime() {
+    const modal = document.getElementById('time-modal');
+    return !!(modal && !modal.classList.contains('hidden'));
+  }
+
   function startPolling() {
     clearInterval(pollTimer);
     if (!syncEnabled()) return;
     pollTimer = setInterval(() => {
-      // Ne pas rafraîchir l'affichage pendant une saisie en cours
-      const active = document.activeElement;
-      if (active && active.classList && active.classList.contains('cell-input')) return;
-      if (outboxForYear().some((o) => !o.conflict)) flushOutbox();
-      else cloudPull();
+      // Ne jamais reconstruire le tableau pendant que le sélecteur horaire est ouvert.
+      if (isEditingTime()) return;
+      syncNow();
     }, POLL_MS);
   }
 
   /** Déclencheurs de synchronisation (retour réseau, premier plan, focus). */
   function setupSyncTriggers() {
-    window.addEventListener('online', () => { retryDelay = 0; renderSyncStatus(); scheduleFlush(0); });
+    window.addEventListener('online', () => {
+      retryDelay = 0;
+      renderSyncStatus();
+      if (syncEnabled() && !isEditingTime()) scheduleSync(0);
+    });
     window.addEventListener('offline', () => renderSyncStatus());
-    window.addEventListener('focus', () => { if (syncEnabled()) scheduleFlush(0); });
+    window.addEventListener('focus', () => {
+      if (syncEnabled() && !isEditingTime()) scheduleSync(0);
+    });
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState !== 'visible' || !syncEnabled()) return;
-      const active = document.activeElement;
-      const editing = active && active.classList && active.classList.contains('cell-input');
-      if (outboxForYear().some((o) => !o.conflict)) scheduleFlush(0);
-      else if (!editing) cloudPull();
+      if (document.visibilityState !== 'visible' || !syncEnabled() || isEditingTime()) return;
+      scheduleSync(0);
     });
   }
 
@@ -540,7 +608,7 @@
     renderContent();
     renderConflictList();
     renderSyncStatus();
-    scheduleFlush(0);
+    scheduleSync(0);
   }
 
   function setupConflictModal() {
@@ -969,10 +1037,23 @@
 
   function performReset() {
     const prefix = `${currentYear}-`;
+    const clears = [];
     Object.keys(state.entries).forEach((k) => {
-      if (k.startsWith(prefix)) delete state.entries[k];
+      if (!k.startsWith(prefix)) return;
+      const entry = state.entries[k] || {};
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(k);
+      if (m && currentYear === syncedYear()) {
+        const month0 = Number(m[2]) - 1;
+        const day = Number(m[3]);
+        if (entry.arr) clears.push({ month0, day, field: 'arr' });
+        if (entry.dep) clears.push({ month0, day, field: 'dep' });
+      }
+      delete state.entries[k];
     });
     save();
+    // Une réinitialisation d'une année partagée doit aussi effacer le distant :
+    // chaque cellule supprimée devient une opération explicite dans l'outbox.
+    clears.forEach((c) => enqueueOp(currentYear, c.month0, c.day, c.field, ''));
     renderContent();
   }
 
@@ -1275,18 +1356,40 @@
         return;
       }
       feedback.className = 'modal-feedback info';
-      feedback.textContent = 'Test de la connexion…';
-      // Applique temporairement pour tester
+      feedback.textContent = 'Test de la connexion et du protocole…';
+      // Applique temporairement pour tester, sans enregistrer tant que le
+      // backend n'a pas prouvé qu'il supporte bien writeField (protocole v2).
       const previous = sync;
+      const targetChanged = previous.url !== url || Number(previous.year) !== year;
+      const unresolved = previous.url
+        ? outbox.filter((o) => o.year === (previous.year || currentYear))
+        : [];
+      if (targetChanged && unresolved.length) {
+        feedback.className = 'modal-feedback err';
+        feedback.textContent = `${unresolved.length} modification(s) sont encore en attente ou en conflit. Synchronise-les avant de changer de feuille.`;
+        return;
+      }
+
       sync = { url, year };
       try {
-        const res = await jsonp({ action: 'ping' }, 15000);
-        if (!res || !res.ok) throw new Error('réponse inattendue');
+        const ping = await jsonp({ action: 'ping' }, 15000);
+        if (!ping || !ping.ok) throw new Error('connexion');
+        // Requête volontairement invalide et sans écriture : un backend v2
+        // répond « champ invalide », tandis qu'un ancien script ne connaît pas writeField.
+        const probe = await jsonp({ action: 'writeField', field: '__protocol_probe__' }, 15000);
+        if (!probe || probe.error !== 'champ invalide') throw new Error('protocole-v2');
       } catch (e) {
         sync = previous;
         feedback.className = 'modal-feedback err';
-        feedback.textContent = 'Connexion impossible. Vérifie l\'URL et le déploiement (accès « Tout le monde »).';
+        feedback.textContent = e && e.message === 'protocole-v2'
+          ? 'Le Google Apps Script déployé est trop ancien. Mets Code.gs à jour puis crée une nouvelle version du déploiement.'
+          : 'Connexion impossible. Vérifie l\'URL et le déploiement (accès « Tout le monde »).';
         return;
+      }
+
+      if (targetChanged) {
+        knownRevs = {};
+        saveRevs();
       }
       saveSync();
       currentYear = year;
@@ -1295,7 +1398,7 @@
       feedback.className = 'modal-feedback ok';
       feedback.textContent = 'Connecté ! Synchronisation en cours…';
       setSyncStatus('sync', 'Synchronisation…');
-      await cloudPull();
+      await syncNow();
       startPolling();
       setTimeout(closeShareModal, 600);
     });
@@ -1351,10 +1454,8 @@
 
   if (syncEnabled()) {
     renderSyncStatus();
-    // 1) on affiche immédiatement l'état local, 2) on tente d'envoyer l'outbox,
-    // 3) on fusionne les données distantes (non destructif), puis on démarre le
-    // repli périodique. L'UI n'attend jamais le réseau pour s'afficher.
-    flushOutbox();
-    cloudPull().then(() => { focusTodayInput(); startPolling(); });
+    // L'UI s'affiche immédiatement depuis le local, puis UN SEUL cycle sérialisé
+    // pousse l'outbox avant de lire/fusionner le distant. Plus de course push/pull.
+    syncNow().then(() => { focusTodayInput(); startPolling(); });
   }
 })();

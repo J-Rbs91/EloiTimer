@@ -23,7 +23,7 @@
  * en attente (« waiting ») jusqu'à ce que la page demande explicitement à
  * l'activer (message SKIP_WAITING) — aucune saisie en cours n'est interrompue.
  */
-const CACHE = 'eloitimer-v28';
+const CACHE = 'eloitimer-v29';
 const CORE = './index.html';
 // Fichiers dont dépend le PREMIER RENDU : ils doivent impérativement être en
 // cache pour une ouverture fiable hors ligne.
