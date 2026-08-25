@@ -19,7 +19,10 @@ jobs:
           ref: fix/sync-orchestration-reliability
 
       - name: Apply sync patch
-        run: python3 tools/apply-sync-fix.py
+        run: |
+          python3 tools/apply-sync-fix.py
+          tail -n +2 tests/client-sync-structure.js > /tmp/client-sync-structure.js
+          mv /tmp/client-sync-structure.js tests/client-sync-structure.js
 
       - name: Validate JavaScript and tests
         run: |
