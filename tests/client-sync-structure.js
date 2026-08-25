@@ -21,6 +21,7 @@ const push = cycle.indexOf('await flushOutbox()');
 const pull = cycle.indexOf('await cloudPull()');
 ok(push >= 0, 'syncNow attend le push de l’outbox');
 ok(pull > push, 'le pull ne démarre qu’après la fin du push');
+ok(cycle.indexOf('if (!flushOk)') > push && cycle.indexOf('if (!flushOk)') < pull, 'un push échoué empêche le pull distant');
 ok(!/flushOutbox\(\);\s*cloudPull\(\)/.test(app), 'aucun démarrage push/pull parallèle ne subsiste');
 console.log('\n• Client sync — erreurs et déclencheurs');
 const cloud = functionBody('cloudPull', '\n\n  /**\n   * Cycle unique');

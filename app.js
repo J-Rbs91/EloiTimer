@@ -415,10 +415,18 @@
     renderSyncStatus();
     syncCyclePromise = (async () => {
       const flushOk = await flushOutbox();
+      if (!flushOk) {
+        lastError = true;
+        return false;
+      }
       const pullOk = await cloudPull();
-      const ok = flushOk && pullOk;
-      lastError = !ok;
-      return ok;
+      lastError = !pullOk;
+      if (!pullOk) scheduleRetry();
+      else {
+        clearTimeout(retryTimer);
+        retryDelay = 0;
+      }
+      return pullOk;
     })();
 
     try {
@@ -502,9 +510,7 @@
 
   function isEditingTime() {
     const modal = document.getElementById('time-modal');
-    if (modal && !modal.classList.contains('hidden')) return true;
-    const active = document.activeElement;
-    return !!(active && active.classList && active.classList.contains('cell-input'));
+    return !!(modal && !modal.classList.contains('hidden'));
   }
 
   function startPolling() {
