@@ -47,6 +47,6 @@ const canonical = spreadsheet(['Août', 'Aout']);
 ok(sandbox.getMonthSheet_(canonical, 7).getName() === 'Août', 'le nom canonique reste prioritaire s’il existe');
 
 const directMonthlyLookups = (code.match(/getSheetByName\(MONTHS\[/g) || []).length;
-ok(directMonthlyLookups === 1, 'tous les accès mensuels passent par getMonthSheet_');
+ok(directMonthlyLookups === 0, 'tous les accès mensuels passent par getMonthSheet_');
 
 if (!process.exitCode) console.log(`\n✓ ONGLETS MENSUELS : ${passed} assertions OK.`);
