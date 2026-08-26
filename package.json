@@ -4,6 +4,6 @@
   "description": "PWA de pointage des heures — offline-first, outbox de synchronisation.",
   "private": true,
   "scripts": {
-    "test": "node tests/run.js && node tests/client-sync-structure.js"
+    "test": "node tests/run.js && node tests/client-sync-structure.js && node tests/server-sheet-aliases.js"
   }
 }

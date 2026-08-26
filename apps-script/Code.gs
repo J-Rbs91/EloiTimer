@@ -49,7 +49,42 @@ var RATES_SHEET = 'Taux';      // onglet d'historique des taux
 var META_SHEET = '_SyncMeta';  // révisions/valeurs par cellule (masqué)
 var OPS_SHEET = '_SyncOps';    // journal d'idempotence (masqué)
 var OPS_CAP = 2000;            // nombre max d'identifiants d'op conservés
-var LOCK_MS = 10000;          // durée max d'attente/tenue du verrou
+var LOCK_MS = 10000;           // durée max d'attente/tenue du verrou
+
+/**
+ * Clé de comparaison tolérante pour les noms d'onglets mensuels.
+ * La feuille historique utilise notamment « Fevrier » et « Aout », alors que
+ * les libellés canoniques de l'application sont « Février » et « Août ».
+ * Une différence d'accent/casse ne doit jamais couper toute la synchronisation.
+ */
+function monthNameKey_(name) {
+  return String(name || '').trim().toLowerCase()
+    .replace(/[àáâäãå]/g, 'a')
+    .replace(/[éèêë]/g, 'e')
+    .replace(/[îïíì]/g, 'i')
+    .replace(/[ôöóòõ]/g, 'o')
+    .replace(/[ùûüú]/g, 'u')
+    .replace(/ç/g, 'c')
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * Résout un onglet mensuel en privilégiant le nom canonique, puis en repliant
+ * sur une comparaison sans accent et insensible à la casse.
+ */
+function getMonthSheet_(ss, m) {
+  if (!ss || isNaN(m) || m < 0 || m > 11) return null;
+  var canonical = MONTHS[m];
+  var direct = ss.getSheetByName(canonical);
+  if (direct) return direct;
+
+  var wanted = monthNameKey_(canonical);
+  var sheets = ss.getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    if (monthNameKey_(sheets[i].getName()) === wanted) return sheets[i];
+  }
+  return null;
+}
 
 function doGet(e) {
   var p = (e && e.parameter) || {};
@@ -88,7 +123,7 @@ function readAll() {
   var rate = null;
   var months = {};
   for (var m = 0; m < 12; m++) {
-    var sh = ss.getSheetByName(MONTHS[m]);
+    var sh = getMonthSheet_(ss, m);
     if (!sh) continue;
     if (rate === null) {
       var rv = sh.getRange(RATE_CELL).getValue();
@@ -220,7 +255,7 @@ function writeField(p) {
  * Heures, Montant) en une seule écriture groupée A..F. Préserve l'autre champ.
  */
 function applyCellWrite_(ss, year, m, day, field, value) {
-  var sh = ss.getSheetByName(MONTHS[m]);
+  var sh = getMonthSheet_(ss, m);
   if (!sh) throw new Error('onglet introuvable : ' + MONTHS[m]);
   var row = FIRST_DATA_ROW + (day - 1);
   var curCD = sh.getRange(row, COL_ARR, 1, 2).getDisplayValues()[0]; // [arr, dep]
@@ -242,7 +277,7 @@ function applyCellWrite_(ss, year, m, day, field, value) {
 
 /** Lit la valeur "HH:MM" d'un champ directement dans la feuille du mois. */
 function readCellValue_(ss, m, day, field) {
-  var sh = ss.getSheetByName(MONTHS[m]);
+  var sh = getMonthSheet_(ss, m);
   if (!sh) return '';
   var row = FIRST_DATA_ROW + (day - 1);
   var col = field === 'arr' ? COL_ARR : COL_DEP;
@@ -369,7 +404,7 @@ function setRates(p) {
     var current = clean.length ? clean[0].value : 0;
     for (var k = 0; k < clean.length; k++) { if (clean[k].from <= today) current = clean[k].value; }
     for (var mm = 0; mm < 12; mm++) {
-      var ms = ss.getSheetByName(MONTHS[mm]);
+      var ms = getMonthSheet_(ss, mm);
       if (ms) ms.getRange(RATE_CELL).setValue(current);
     }
     // Recalcule TOUS les montants avec la nouvelle grille de taux (Heures inchangées).
@@ -383,7 +418,7 @@ function setRates(p) {
 /** Recalcule Heures + Montant de chaque ligne saisie, par écriture groupée. */
 function recomputeAllAmounts_(ss) {
   for (var m = 0; m < 12; m++) {
-    var sh = ss.getSheetByName(MONTHS[m]);
+    var sh = getMonthSheet_(ss, m);
     if (!sh) continue;
     var year = yearOfSheet_(sh, m);
     var cd = sh.getRange(FIRST_DATA_ROW, COL_ARR, 31, 2).getDisplayValues(); // C..D
@@ -416,7 +451,7 @@ function setRate(p) {
   if (isNaN(r) || r < 0) return { ok: false, error: 'taux invalide' };
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   for (var m = 0; m < 12; m++) {
-    var sh = ss.getSheetByName(MONTHS[m]);
+    var sh = getMonthSheet_(ss, m);
     if (sh) sh.getRange(RATE_CELL).setValue(r);
   }
   return { ok: true };
@@ -435,7 +470,7 @@ function rateForDate_(ss, year, m, day) {
     }
     return v;
   }
-  var sh = ss.getSheetByName(MONTHS[m]);
+  var sh = getMonthSheet_(ss, m);
   var rv = sh ? sh.getRange(RATE_CELL).getValue() : 0;
   return (typeof rv === 'number' && rv > 0) ? rv : 0;
 }
@@ -451,7 +486,7 @@ function writeOne(p) {
     return { ok: false, error: 'paramètres invalides' };
   }
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sh = ss.getSheetByName(MONTHS[m]);
+  var sh = getMonthSheet_(ss, m);
   if (!sh) return { ok: false, error: 'onglet introuvable : ' + MONTHS[m] };
 
   var lock = LockService.getScriptLock();
