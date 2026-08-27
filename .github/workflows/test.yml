@@ -8,15 +8,24 @@ on:
 permissions:
   contents: read
 
+# A newer PR revision supersedes the previous one. Main runs remain complete
+# deployment evidence and are never cancelled by a later merge.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Node.js 24
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
 
@@ -24,6 +33,7 @@ jobs:
         run: |
           node --check app.js
           node --check sw.js
+          node --check sync-core.js
 
       - name: Tests
         run: npm test
