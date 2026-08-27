@@ -1,46 +1,118 @@
 name: Déploiement GitHub Pages
 
-# Publie le site statique (PWA Planning Eloi) sur GitHub Pages
+# Publie uniquement un SHA de main déjà validé par le workflow Tests.
+# Un redeploiement manuel est autorisé seulement si le SHA courant possède une
+# exécution Tests réussie. L'artefact Pages utilise une allowlist de fichiers PWA
+# au lieu de publier toute la racine du dépôt.
 on:
-  push:
+  workflow_run:
+    workflows: ["Tests"]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
-# Permissions nécessaires au déploiement Pages
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 
-# Un seul déploiement Pages à la fois. En cas de pushes rapprochés, on annule
-# proprement le run en cours (statut « cancelled ») pour ne garder que le
-# dernier — évite les faux échecs « Deployment cancelled » côté Pages.
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
+  prepare:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      deploy: ${{ steps.gate.outputs.deploy }}
+      candidate_sha: ${{ steps.gate.outputs.candidate_sha }}
+
+    steps:
+      - name: Bind publication to current validated main
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          echo "deploy=false" >> "$GITHUB_OUTPUT"
+          echo "candidate_sha=$CANDIDATE_SHA" >> "$GITHUB_OUTPUT"
+
+          current_main="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          if [ "$CANDIDATE_SHA" != "$current_main" ]; then
+            echo "Le candidat $CANDIDATE_SHA n'est plus le main courant ($current_main) : publication ignorée."
+            exit 0
+          fi
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            conclusion="$(
+              gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/test.yml/runs" \
+                -f branch=main \
+                -f event=push \
+                -f head_sha="$CANDIDATE_SHA" \
+                -f per_page=10 \
+                --jq '.workflow_runs[0].conclusion // ""'
+            )"
+            if [ "$conclusion" != "success" ]; then
+              echo "Aucune exécution Tests réussie pour le SHA main $CANDIDATE_SHA." >&2
+              exit 1
+            fi
+          fi
+
+          echo "deploy=true" >> "$GITHUB_OUTPUT"
+
+      - name: Récupération du SHA validé
+        if: steps.gate.outputs.deploy == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ steps.gate.outputs.candidate_sha }}
+          persist-credentials: false
+
+      - name: Assembler uniquement la PWA publique
+        if: steps.gate.outputs.deploy == 'true'
+        run: |
+          set -euo pipefail
+          rm -rf _site
+          mkdir -p _site
+          cp index.html styles.css app.js sw.js sync-core.js manifest.webmanifest _site/
+          cp -R icons _site/
+
+          # Refuse une allowlist devenue incomplète : les références locales de
+          # l'HTML/manifest/service worker doivent continuer à pointer vers les
+          # fichiers publiés. Les tests applicatifs restent la preuve fonctionnelle.
+          test -s _site/index.html
+          test -s _site/app.js
+          test -s _site/sw.js
+          test -s _site/sync-core.js
+          test -s _site/manifest.webmanifest
+
+      - name: Configuration de Pages
+        if: steps.gate.outputs.deploy == 'true'
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+        with:
+          enablement: true
+
+      - name: Téléversement de l'artefact du site
+        if: steps.gate.outputs.deploy == 'true'
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: _site
+
   deploy:
+    needs: prepare
+    if: needs.prepare.outputs.deploy == 'true'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Récupération du dépôt
-        uses: actions/checkout@v4
-
-      - name: Configuration de Pages
-        uses: actions/configure-pages@v5
-        with:
-          # Active GitHub Pages automatiquement si ce n'est pas déjà fait
-          enablement: true
-
-      - name: Téléversement de l'artefact du site
-        uses: actions/upload-pages-artifact@v3
-        with:
-          # Racine du dépôt : index.html, styles.css, app.js, sw.js, manifest, icons/
-          path: .
-
       - name: Déploiement vers GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
