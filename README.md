@@ -1,3 +1,5 @@
+![ÉloiTimer, bannière reprenant l'identité visuelle du site](.github/readme-hero.svg)
+
 # Planning Eloi — EloiTimer
 
 Interface web autonome qui reproduit la feuille de calcul Google Sheets
